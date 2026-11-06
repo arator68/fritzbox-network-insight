@@ -10,11 +10,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 
 from .const import DOMAIN
 from .coordinator import FritzBoxDataUpdateCoordinator
-from .fritzbox_client import (
-    FritzBoxAuthenticationError,
-    FritzBoxClient,
-    FritzBoxConnectionError,
-)
+from .fritzbox_client import FritzBoxClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,10 +28,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     try:
         await coordinator.async_config_entry_first_refresh()
-    except FritzBoxAuthenticationError as err:
-        raise ConfigEntryAuthFailed("FRITZ!Box authentication failed") from err
+    except ConfigEntryAuthFailed:
+        # Preserve the authentication failure so Home Assistant can start reauth.
+        raise
     except Exception as err:
-        # DataUpdateCoordinator wraps connection errors as UpdateFailed.
+        # DataUpdateCoordinator wraps connection failures as UpdateFailed.
+        _LOGGER.warning(
+            "Initial FRITZ!Box host scan failed; setup will be retried: %s", err
+        )
         raise ConfigEntryNotReady(
             "Could not complete the initial FRITZ!Box host scan"
         ) from err
