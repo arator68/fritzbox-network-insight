@@ -43,7 +43,9 @@ async def async_setup_entry(
     entry.async_on_unload(coordinator.async_add_listener(_add_new_hosts))
 
 
-class FritzBoxDeviceCountSensor(CoordinatorEntity[FritzBoxDataUpdateCoordinator], SensorEntity):
+class FritzBoxDeviceCountSensor(
+    CoordinatorEntity[FritzBoxDataUpdateCoordinator], SensorEntity
+):
     """Expose the number of hosts currently returned by the FRITZ!Box."""
 
     _attr_has_entity_name = True
@@ -92,8 +94,10 @@ class FritzBoxHostStatusSensor(
 ):
     """Expose the current status and metadata of one MAC-identified host."""
 
-    _attr_has_entity_name = True
-    _attr_name = "Status"
+    # Use a complete, integration-specific name instead of Home Assistant's
+    # device-name prefix. This prevents collisions with other integrations
+    # that expose a sensor named "Status" for the same physical device.
+    _attr_has_entity_name = False
     _attr_icon = "mdi:lan-connect"
 
     def __init__(
@@ -107,9 +111,11 @@ class FritzBoxHostStatusSensor(
         compact_mac = mac.replace(":", "").lower()
         self._attr_unique_id = f"host_{compact_mac}_status"
         host = (coordinator.data or {}).get(mac, {})
+        device_name = host.get("name") or mac
+        self._attr_name = f"FRITZ!Box Network Insight {device_name} Status"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, mac)},
-            name=host.get("name") or mac,
+            name=device_name,
             manufacturer="Unknown",
             model="Network device",
             connections={("mac", mac)},
