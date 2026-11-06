@@ -1,11 +1,22 @@
-"""Tests for FRITZ!Box host normalization."""
+"""Tests for FRITZ!Box host normalization without importing Home Assistant."""
+import importlib.util
+from pathlib import Path
 import unittest
 
-from custom_components.fritzbox_network_insight.device import (
-    as_bool,
-    normalize_host,
-    normalize_mac,
+DEVICE_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "custom_components"
+    / "fritzbox_network_insight"
+    / "device.py"
 )
+SPEC = importlib.util.spec_from_file_location("fritzbox_network_device", DEVICE_PATH)
+assert SPEC is not None and SPEC.loader is not None
+DEVICE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(DEVICE)
+
+normalize_mac = DEVICE.normalize_mac
+normalize_host = DEVICE.normalize_host
+as_bool = DEVICE.as_bool
 
 
 class TestNormalizeMac(unittest.TestCase):
