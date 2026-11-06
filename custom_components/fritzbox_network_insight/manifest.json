@@ -9,7 +9,5 @@
   "issue_tracker": "https://github.com/arator68/fritzbox-network-insight/issues",
   "requirements": ["fritzconnection>=1.15.1"],
   "single_config_entry": true,
-  "version": "0.2.0-dev.1"
+  "version": "0.2.0-dev.2"
 }
-
-
