@@ -2,6 +2,7 @@
   "domain": "fritzbox_network_insight",
   "name": "FRITZ!Box Network Insight",
   "codeowners": ["@arator68"],
+  "config_flow": true,
   "documentation": "https://github.com/arator68/fritzbox-network-insight",
   "integration_type": "hub",
   "iot_class": "local_polling",
@@ -10,3 +11,4 @@
   "single_config_entry": true,
   "version": "0.2.0-dev.1"
 }
+
