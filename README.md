@@ -1,27 +1,34 @@
 # FRITZ!Box Network Insight
 
-A Home Assistant custom integration for network device discovery, identification and topology analysis.
+A Home Assistant custom integration for discovering devices reported by a FRITZ!Box and preparing a reliable foundation for network topology analysis.
 
-> **Project status:** Planning and architecture phase. The integration is not yet installable and no release is available.
+## Current development status
 
-## Planned capabilities
+The `develop` branch contains an early, manually installable development version. It is **not a stable release**.
 
-- Discover network devices through FRITZ!Box data and additional supported sources.
-- Use the MAC address as the stable device identity.
-- Identify manufacturers locally through an updateable OUI database.
-- Collect observations from managed switches through SNMP and, where supported, LLDP.
-- Discover AVM routers and repeaters and represent them as separate Home Assistant devices.
-- Preserve observations from different sources instead of silently overwriting conflicting information.
-- Distinguish proven, probable and unknown network connections.
-- Retain device history across Home Assistant restarts.
-- Create entities dynamically from information that is actually available.
-- Provide German and English translations.
+Implemented in the current development line:
 
-These are planned requirements, not implemented features.
+- Configure one FRITZ!Box through the Home Assistant UI.
+- Validate credentials by making a live TR-064 host-list request.
+- Read the FRITZ!Box host list through the TR-064 Hosts service.
+- Normalize MAC addresses and use them as stable device identities.
+- Poll the host list every 60 seconds.
+- Create one overview sensor with the number of hosts in the latest scan.
+- Create one status sensor per discovered MAC address.
+- Expose available host metadata (name, IP address, active state and interface type) as sensor attributes.
+- Log successful scan counts at INFO level and individual device details at DEBUG level.
 
-## Development status
+The integration currently reports the hosts returned by the FRITZ!Box. It does not yet determine physical switch-port topology, prove LLDP links, or retain historical last-seen information across restarts. Those capabilities require later development phases and additional data sources.
 
-The project is currently in the specification phase. The detailed requirements and module interfaces will be documented and reviewed before implementation begins.
+## Installation for development
+
+1. Select the `develop` branch on GitHub and download its ZIP archive.
+2. Copy only `custom_components/fritzbox_network_insight` into the Home Assistant `config/custom_components/` directory.
+3. Restart Home Assistant.
+4. Open **Settings → Devices & services → Add integration** and search for **FRITZ!Box Network Insight**.
+5. Enter the FRITZ!Box address and a user account permitted to access the FRITZ!Box application/TR-064 interface.
+
+Do not publish or share the FRITZ!Box password or unredacted diagnostic logs.
 
 ## Branch strategy
 
@@ -29,12 +36,8 @@ The project is currently in the specification phase. The detailed requirements a
 - `develop`: current integration and testing branch.
 - `feature/*`: isolated development of individual features.
 
-Changes are reviewed against the agreed requirements before they are merged into `main`.
+Feature branches are reviewed through pull requests targeting `develop`. Only approved releases are merged into `main`.
 
-## Installation
-
-Installation instructions will be added when the integration is ready for testing and a first release is available.
-
-## Lizenz / License
+## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE).
