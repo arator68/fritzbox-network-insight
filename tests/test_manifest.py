@@ -31,6 +31,7 @@ class TestManifest(unittest.TestCase):
         )
         self.assertEqual(manifest["integration_type"], "hub")
         self.assertEqual(manifest["iot_class"], "local_polling")
+        self.assertIs(manifest["single_config_entry"], True)
         self.assertTrue(manifest["version"])
 
 
