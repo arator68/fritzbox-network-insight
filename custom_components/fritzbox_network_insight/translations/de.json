@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "FRITZ!Box verbinden",
+        "description": "Gib die lokale Adresse und die Zugangsdaten deiner FRITZ!Box ein. Die Verbindung wird mit einer echten TR-064-Abfrage geprüft.",
+        "data": {
+          "host": "FRITZ!Box-Adresse",
+          "username": "Benutzername",
+          "password": "Passwort"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Die FRITZ!Box hat Benutzername oder Passwort abgelehnt.",
+      "cannot_connect": "Die FRITZ!Box konnte nicht erreicht oder ihre Geräteliste nicht gelesen werden."
+    },
+    "abort": {
+      "already_configured": "Diese FRITZ!Box ist bereits eingerichtet."
+    }
+  }
+}
