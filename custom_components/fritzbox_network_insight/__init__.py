@@ -8,12 +8,6 @@ from homeassistant.core import HomeAssistant
 from .const import DOMAIN
 
 
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Set up the integration component."""
-    hass.data.setdefault(DOMAIN, {})
-    return True
-
-
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up a configured integration entry."""
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {}
