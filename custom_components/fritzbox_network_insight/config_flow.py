@@ -47,7 +47,7 @@ async def _async_validate(
     return None
 
 
-class FritzBoxNetworkInsightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Configure one FRITZ!Box connection."""
 
     VERSION = 1
