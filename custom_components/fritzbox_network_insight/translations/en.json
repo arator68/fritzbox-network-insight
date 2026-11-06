@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect FRITZ!Box",
+        "description": "Enter the local address and credentials of your FRITZ!Box. A live TR-064 request verifies the connection.",
+        "data": {
+          "host": "FRITZ!Box address",
+          "username": "Username",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "The FRITZ!Box rejected the username or password.",
+      "cannot_connect": "Could not connect to the FRITZ!Box or read its host list."
+    },
+    "abort": {
+      "already_configured": "This FRITZ!Box is already configured."
+    }
+  }
+}
