@@ -43,7 +43,9 @@ async def async_setup_entry(
     entry.async_on_unload(coordinator.async_add_listener(_add_new_hosts))
 
 
-class FritzBoxDeviceCountSensor(CoordinatorEntity[FritzBoxDataUpdateCoordinator], SensorEntity):
+class FritzBoxDeviceCountSensor(
+    CoordinatorEntity[FritzBoxDataUpdateCoordinator], SensorEntity
+):
     """Expose the number of hosts currently returned by the FRITZ!Box."""
 
     _attr_has_entity_name = True
@@ -106,10 +108,16 @@ class FritzBoxHostStatusSensor(
         self._mac = mac
         compact_mac = mac.replace(":", "").lower()
         self._attr_unique_id = f"host_{compact_mac}_status"
+
+        # Suggest a stable, integration-specific entity_id based on the MAC.
+        # The visible entity name remains simply "Status" on the device page.
+        self.entity_id = f"sensor.fritzbox_network_insight_{compact_mac}_status"
+
         host = (coordinator.data or {}).get(mac, {})
+        device_name = host.get("name") or mac
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, mac)},
-            name=host.get("name") or mac,
+            name=device_name,
             manufacturer="Unknown",
             model="Network device",
             connections={("mac", mac)},
