@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import json
 from time import monotonic
 from datetime import datetime, timezone
 from typing import Any
@@ -18,6 +19,7 @@ from .discovery import DiscoveryManager
 from .mac_vendor import lookup_mac_vendor
 from .snmp_device_classifier import classify_snmp_system
 from .identification_store import IdentificationStore
+from .topology.lldp_matcher import match_lldp_neighbors
 from .dns import resolve_dns_name
 from .fritzbox_client import (
     FritzBoxAuthenticationError,
@@ -63,6 +65,29 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
     ) -> None:
         """Publish a manual result and update verified MAC-based identification."""
         result_details = dict(details or {})
+        # Match only exact LLDP chassis MACs against known FRITZ!Box hosts.
+        # This is an observation annotation, not an inferred network edge.
+        if mac is not None and "lldp_neighbors" in result_details:
+            try:
+                raw_neighbors = json.loads(result_details["lldp_neighbors"])
+                if isinstance(raw_neighbors, list) and all(
+                    isinstance(item, dict) for item in raw_neighbors
+                ):
+                    matched = match_lldp_neighbors(raw_neighbors, self.data or {})
+                    result_details["lldp_neighbors"] = json.dumps(
+                        matched, ensure_ascii=False
+                    )
+                    result_details["lldp_matched_count"] = str(sum(
+                        item["match_status"] == "matched" for item in matched
+                    ))
+                    result_details["lldp_unmatched_count"] = str(sum(
+                        item["match_status"] == "unmatched" for item in matched
+                    ))
+                    result_details["lldp_ambiguous_count"] = str(sum(
+                        item["match_status"] == "ambiguous" for item in matched
+                    ))
+            except (ValueError, TypeError):
+                _LOGGER.debug("Could not parse LLDP neighbor observations")
         changed = False
         if mac is not None and "snmp" in protocols:
             identified = classify_snmp_system(result_details)
