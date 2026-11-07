@@ -12,6 +12,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers import device_registry as dr
 
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
 from .device_classifier import classify_device
@@ -63,6 +64,8 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
     async def async_load_identifications(self) -> None:
         """Restore verified identifications before the first FRITZ!Box scan."""
         self.device_identifications = await self.identification_store.async_load()
+        for mac, identification in self.device_identifications.items():
+            self._update_identified_device_registry(mac, identification)
 
     async def async_load_topology(self) -> None:
         """Restore last-observed LLDP links; not a live connectivity claim."""
@@ -75,6 +78,24 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
     def get_topology_snapshot(self) -> dict[str, Any]:
         """Provide a single, dashboard-ready topology data model."""
         return topology_snapshot(self.topology_observations, self.data or {})
+
+    def _update_identified_device_registry(
+        self, mac: str, identification: dict[str, str]
+    ) -> None:
+        """Update an existing HA device after verified SNMP identification."""
+        registry = dr.async_get(self.hass)
+        device = registry.async_get_device(identifiers={(DOMAIN, mac)})
+        if device is None:
+            return
+        changes: dict[str, str] = {}
+        manufacturer = identification.get("device_manufacturer")
+        model = identification.get("device_model")
+        if manufacturer and device.manufacturer != manufacturer:
+            changes["manufacturer"] = manufacturer
+        if model and device.model != model:
+            changes["model"] = model
+        if changes:
+            registry.async_update_device(device.id, **changes)
 
     async def async_record_manual_discovery(
         self, mac: str | None, *, status: str, requested: int, checked: int,
@@ -131,6 +152,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                     "device_model": identified["device_model"],
                 })
                 # Update the live host record so status sensors change immediately.
+                self._update_identified_device_registry(mac, identified)
                 if self.data and mac in self.data:
                     host = self.data[mac]
                     host.update(identified)
