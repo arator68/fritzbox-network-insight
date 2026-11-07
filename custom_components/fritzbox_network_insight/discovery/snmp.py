@@ -28,6 +28,18 @@ class SnmpDiscoveryAdapter:
     async def async_discover(
         self, host: Mapping[str, Any]
     ) -> DiscoveryEvidence | None:
+        """Keep all PySNMP MIB loading away from Home Assistant's event loop."""
+        return await asyncio.to_thread(self._discover_in_worker, dict(host))
+
+    def _discover_in_worker(
+        self, host: Mapping[str, Any]
+    ) -> DiscoveryEvidence | None:
+        """Run PySNMP asyncio transport on a private worker event loop."""
+        return asyncio.run(self._async_discover_worker(host))
+
+    async def _async_discover_worker(
+        self, host: Mapping[str, Any]
+    ) -> DiscoveryEvidence | None:
         mac = str(host.get("mac") or "").upper()
         self.results.pop(mac, None)
         settings = self._devices.get(mac)
@@ -57,9 +69,8 @@ class SnmpDiscoveryAdapter:
             target = await UdpTransportTarget.create(
                 (str(ip), 161), timeout=2, retries=0
             )
-            # PySNMP loads MIB files while constructing the engine. Keep this
-            # blocking disk I/O off Home Assistant's event loop.
-            engine = await asyncio.to_thread(SnmpEngine)
+            # Lazy MIB loading in get_cmd/walk_cmd is also on this worker.
+            engine = SnmpEngine()
             try:
                 error_indication, error_status, _, var_binds = await asyncio.wait_for(
                     get_cmd(
