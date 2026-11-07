@@ -25,6 +25,7 @@ from .topology.model import build_lldp_links, topology_snapshot
 from .topology.store import TopologyStore
 from .topology.fdb_model import build_fdb_observations
 from .topology.fdb_store import FdbTopologyStore
+from .topology.combined import build_combined_topology
 from .dns import resolve_dns_name
 from .fritzbox_client import (
     FritzBoxAuthenticationError,
@@ -101,6 +102,14 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             "evidence": "last_manual_fdb_observation",
             "connection": "reachable_via_port",
         }
+
+    def get_combined_topology_snapshot(self) -> dict[str, Any]:
+        """Combine persisted LLDP and FDB evidence without inferring links."""
+        return build_combined_topology(
+            self.topology_observations,
+            self.fdb_observations,
+            self.data or {},
+        )
 
     def get_topology_snapshot(self) -> dict[str, Any]:
         """Provide a single, dashboard-ready topology data model."""
