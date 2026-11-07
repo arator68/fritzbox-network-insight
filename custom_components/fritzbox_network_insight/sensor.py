@@ -164,7 +164,7 @@ class FritzBoxHostStatusSensor(
     _attr_has_entity_name = True
     _attr_translation_key = "host_status"
     _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = ["online", "offline", "unbekannt", "nicht gefunden"]
+    _attr_options = ["online", "offline", "unbekannt", "nicht_gefunden"]
     _attr_icon = "mdi:lan-connect"
 
     def __init__(
@@ -218,7 +218,7 @@ class FritzBoxHostStatusSensor(
         """Return online, offline, unknown, or not seen in the latest scan."""
         host = self._host
         if host is None:
-            return "nicht gefunden"
+            return "nicht_gefunden"
         if host["active"] is True:
             return "online"
         if host["active"] is False:
