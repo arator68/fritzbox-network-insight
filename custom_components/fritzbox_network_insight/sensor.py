@@ -104,6 +104,7 @@ class FritzBoxDeviceCountSensor(
                     "mac": host["mac"],
                     "name": host["name"],
                     "ip_address": host["ip_address"],
+                    "dns_name": host.get("dns_name"),
                     "active": host["active"],
                     "interface_type": host["interface_type"],
                 }
