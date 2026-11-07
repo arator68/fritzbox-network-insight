@@ -12,6 +12,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import FritzBoxDataUpdateCoordinator
+from .entity_id_migration import migrate_legacy_status_entity_id
 
 
 async def async_setup_entry(
@@ -106,6 +107,7 @@ class FritzBoxHostStatusSensor(
     ) -> None:
         super().__init__(coordinator)
         self._mac = mac
+        self._config_entry_id = entry.entry_id
         compact_mac = mac.replace(":", "").lower()
         self._attr_unique_id = f"host_{compact_mac}_status"
 
@@ -115,6 +117,7 @@ class FritzBoxHostStatusSensor(
 
         host = (coordinator.data or {}).get(mac, {})
         device_name = host.get("name") or mac
+        self._initial_device_name = device_name
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, mac)},
             name=device_name,
@@ -123,8 +126,20 @@ class FritzBoxHostStatusSensor(
             connections={("mac", mac)},
         )
 
-    @property
-    def _host(self) -> dict[str, Any] | None:
+    async def async_added_to_hass(self) -> None:
+        """Migrate a registered legacy ID after Home Assistant restores it."""
+        await super().async_added_to_hass()
+        migrate_legacy_status_entity_id(
+            self.hass,
+            config_entry_id=self._config_entry_id,
+            unique_id=self.unique_id,
+            device_name=self._initial_device_name,
+            target_entity_id=(
+                f"sensor.fritzbox_network_insight_"
+                f"{self._mac.replace(':', '').lower()}_status"
+            ),
+        )
+
         """Return the latest host record for this MAC."""
         return (self.coordinator.data or {}).get(self._mac)
 
