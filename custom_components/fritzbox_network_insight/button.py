@@ -14,6 +14,7 @@ from .const import DOMAIN
 from .coordinator import FritzBoxDataUpdateCoordinator
 from .discovery.manual import ManualDiscoveryRunner
 from .discovery.ssdp import SsdpDiscoveryAdapter
+from .discovery.snmp import SnmpDiscoveryAdapter
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,7 +26,10 @@ async def async_setup_entry(
 ) -> None:
     """Add one global and one per-device explicit discovery button."""
     coordinator: FritzBoxDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
-    runner = ManualDiscoveryRunner((SsdpDiscoveryAdapter(),))
+    runner = ManualDiscoveryRunner((
+        SsdpDiscoveryAdapter(),
+        SnmpDiscoveryAdapter(entry.options.get('snmp_devices', {})),
+    ))
     known_macs: set[str] = set()
     buttons: list[ButtonEntity] = [DiscoverAllButton(coordinator, entry, runner)]
     for mac in sorted((coordinator.data or {})):
@@ -73,7 +77,7 @@ class DiscoverAllButton(
         """Perform discovery only on explicit button press."""
         result = await self._runner.async_run(dict(self.coordinator.data or {}))
         self.coordinator.record_manual_discovery(
-            None, status=result.status, requested=result.requested, checked=result.checked, protocols=result.protocols
+            None, status=result.status, requested=result.requested, checked=result.checked, protocols=result.protocols, details=result.details
         )
         _LOGGER.info(
             "Manual discovery for all devices: %s (%d requested, %d checked)",
@@ -112,7 +116,7 @@ class DiscoverHostButton(
             dict(self.coordinator.data or {}), self._mac
         )
         self.coordinator.record_manual_discovery(
-            self._mac, status=result.status, requested=result.requested, checked=result.checked
+            self._mac, status=result.status, requested=result.requested, checked=result.checked, protocols=result.protocols, details=result.details
         )
         _LOGGER.info(
             "Manual discovery for %s: %s (%d checked)",
