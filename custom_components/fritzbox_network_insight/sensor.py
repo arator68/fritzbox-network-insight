@@ -218,6 +218,8 @@ class FritzBoxHostStatusSensor(
             "device_type": host.get("device_type"),
             "device_type_source": host.get("device_type_source"),
             "device_type_confidence": host.get("device_type_confidence"),
+            "device_manufacturer": host.get("device_manufacturer"),
+            "device_model": host.get("device_model"),
             "mac_vendor": host.get("mac_vendor"),
             "mac_vendor_prefix": host.get("mac_vendor_prefix"),
             "mac_vendor_source": host.get("mac_vendor_source"),
