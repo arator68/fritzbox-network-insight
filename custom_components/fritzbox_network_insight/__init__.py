@@ -29,6 +29,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await coordinator.async_load_identifications()
     await coordinator.async_load_topology()
+    await coordinator.async_load_fdb_topology()
     # IEEE vendor CSV must be read outside the HA event loop.
     await hass.async_add_executor_job(preload_mac_vendor_registry)
 

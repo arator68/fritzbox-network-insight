@@ -53,6 +53,7 @@ async def async_setup_entry(
     entities: list[SensorEntity] = [
         FritzBoxDeviceCountSensor(coordinator, entry),
         FritzBoxTopologySensor(coordinator, entry),
+        FritzBoxFdbTopologySensor(coordinator, entry),
         ManualDiscoveryResultSensor(coordinator, entry),
     ]
     for mac in sorted((coordinator.data or {}).keys()):
@@ -279,3 +280,59 @@ class FritzBoxTopologySensor(
     def extra_state_attributes(self) -> dict[str, Any]:
         """Expose the central MAC-keyed topology model."""
         return self.coordinator.get_topology_snapshot()
+
+
+class FritzBoxFdbTopologySensor(
+    CoordinatorEntity[FritzBoxDataUpdateCoordinator], SensorEntity
+):
+    """Last manually observed MAC reachability via switch ports."""
+
+    _attr_has_entity_name = True
+    _attr_name = "FDB-Portzuordnung"
+    _attr_icon = "mdi:lan"
+
+    def __init__(
+        self,
+        coordinator: FritzBoxDataUpdateCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_fdb_topology"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=f"FRITZ!Box {entry.data.get('host', '')}",
+            manufacturer="AVM",
+            model="FRITZ!Box",
+        )
+
+    @property
+    def native_value(self) -> int:
+        """Total number of saved FDB observations."""
+        return self.coordinator.get_fdb_snapshot()["observation_count"]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Compact per-port summary; complete entries remain in the store."""
+        snapshot = self.coordinator.get_fdb_snapshot()
+        by_port: dict[str, dict[str, Any]] = {}
+        for item in snapshot["observations"]:
+            source = item.get("source_mac") or ""
+            port = item.get("interface_name") or item.get("bridge_port") or ""
+            key = f"{source}/{port}"
+            if key not in by_port:
+                by_port[key] = {
+                    "source_mac": source,
+                    "port": port,
+                    "mac_count": 0,
+                    "sample_macs": [],
+                }
+            by_port[key]["mac_count"] += 1
+            if len(by_port[key]["sample_macs"]) < 5:
+                by_port[key]["sample_macs"].append(item.get("target_mac"))
+        return {
+            "observation_count": snapshot["observation_count"],
+            "source_count": snapshot["source_count"],
+            "evidence": snapshot["evidence"],
+            "connection": snapshot["connection"],
+            "ports": list(by_port.values())[:64],
+        }

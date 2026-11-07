@@ -23,6 +23,8 @@ from .identification_store import IdentificationStore
 from .topology.lldp_matcher import match_lldp_neighbors
 from .topology.model import build_lldp_links, topology_snapshot
 from .topology.store import TopologyStore
+from .topology.fdb_model import build_fdb_observations
+from .topology.fdb_store import FdbTopologyStore
 from .dns import resolve_dns_name
 from .fritzbox_client import (
     FritzBoxAuthenticationError,
@@ -47,6 +49,8 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self.device_identifications: dict[str, dict[str, str]] = {}
         self.identification_store = IdentificationStore(hass, entry.entry_id)
         self.topology_store = TopologyStore(hass, entry.entry_id)
+        self.fdb_topology_store = FdbTopologyStore(hass, entry.entry_id)
+        self.fdb_observations: dict[str, list[dict[str, str | None]]] = {}
         self.topology_observations: dict[str, list[dict[str, Any]]] = {}
         self._topology_save_lock = asyncio.Lock()
         self._identification_save_lock = asyncio.Lock()
@@ -74,6 +78,29 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         except Exception:
             _LOGGER.exception("Could not load saved LLDP topology")
             self.topology_observations = {}
+
+    async def async_load_fdb_topology(self) -> None:
+        """Restore last manual FDB observations, not live connectivity."""
+        try:
+            self.fdb_observations = await self.fdb_topology_store.async_load()
+        except Exception:
+            _LOGGER.exception("Could not load saved FDB topology")
+            self.fdb_observations = {}
+
+    def get_fdb_snapshot(self) -> dict[str, Any]:
+        """Expose last-observed MAC reachability separately from LLDP links."""
+        observations = [
+            dict(item)
+            for source in sorted(self.fdb_observations)
+            for item in self.fdb_observations[source]
+        ]
+        return {
+            "observations": observations,
+            "observation_count": len(observations),
+            "source_count": len(self.fdb_observations),
+            "evidence": "last_manual_fdb_observation",
+            "connection": "reachable_via_port",
+        }
 
     def get_topology_snapshot(self) -> dict[str, Any]:
         """Provide a single, dashboard-ready topology data model."""
@@ -137,6 +164,22 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                         topology_changed = True
             except (ValueError, TypeError):
                 _LOGGER.debug("Invalid LLDP observations; retaining previous topology")
+        fdb_changed = False
+        # Only replace saved FDB observations after a successful complete walk.
+        # Unavailable or truncated results must preserve the previous snapshot.
+        if (mac is not None and "snmp" in protocols
+                and result_details.get("fdb_status") == "ok"
+                and result_details.get("fdb_truncated") == "false"
+                and "fdb_entries" in result_details):
+            try:
+                entries = json.loads(result_details["fdb_entries"])
+                if isinstance(entries, list) and all(isinstance(item, dict) for item in entries):
+                    observations = build_fdb_observations(mac, entries, self.data or {})
+                    self.fdb_observations[mac] = observations
+                    fdb_changed = True
+            except (ValueError, TypeError):
+                _LOGGER.debug("Invalid FDB observations; retaining previous topology")
+
         changed = False
         if mac is not None and "snmp" in protocols:
             identified = classify_snmp_system(result_details)
@@ -168,6 +211,12 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             "last_run": datetime.now(timezone.utc).isoformat(),
         }
         self.async_update_listeners()
+        if fdb_changed:
+            async with self._topology_save_lock:
+                try:
+                    await self.fdb_topology_store.async_save(self.fdb_observations)
+                except Exception:
+                    _LOGGER.exception("Could not persist FDB topology")
         if topology_changed:
             async with self._topology_save_lock:
                 try:
