@@ -164,6 +164,7 @@ class FritzBoxHostStatusSensor(
     _attr_has_entity_name = True
     _attr_translation_key = "host_status"
     _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["online", "offline", "unbekannt", "nicht gefunden"]
     _attr_icon = "mdi:lan-connect"
 
     def __init__(
