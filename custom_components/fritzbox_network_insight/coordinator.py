@@ -16,6 +16,7 @@ from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
 from .device_classifier import classify_device
 from .discovery import DiscoveryManager
 from .mac_vendor import lookup_mac_vendor
+from .snmp_device_classifier import classify_snmp_system
 from .dns import resolve_dns_name
 from .fritzbox_client import (
     FritzBoxAuthenticationError,
@@ -37,6 +38,8 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
     ) -> None:
         self.client = client
         self.discovery_results: dict[str | None, dict[str, Any]] = {}
+        # In-memory, MAC-keyed verified identifications; persistence is a later step.
+        self.device_identifications: dict[str, dict[str, str]] = {}
         self._discovery = DiscoveryManager()
         self.entry = entry
         self._dns_cache: dict[str, tuple[float, str | None]] = {}
@@ -52,13 +55,32 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self, mac: str | None, *, status: str, requested: int, checked: int,
         protocols: tuple[str, ...] = (), details: dict[str, str] | None = None
     ) -> None:
-        """Publish the latest manual result without triggering a network scan."""
+        """Publish a manual result and update verified MAC-based identification."""
+        result_details = dict(details or {})
+        if mac is not None and "snmp" in protocols:
+            identified = classify_snmp_system(result_details)
+            if identified:
+                self.device_identifications[mac] = identified
+                result_details.update({
+                    "device_type": identified["detected_device_type"],
+                    "device_type_source": identified["detected_device_type_source"],
+                    "device_type_confidence": identified["device_type_confidence"],
+                    "device_manufacturer": identified["device_manufacturer"],
+                    "device_model": identified["device_model"],
+                })
+                # Update the live host record so status sensors change immediately.
+                if self.data and mac in self.data:
+                    host = self.data[mac]
+                    host.update(identified)
+                    host.update(classify_device(host))
+                    host["device_type_confidence"] = identified["device_type_confidence"]
+
         self.discovery_results[mac] = {
             "status": status,
             "requested": requested,
             "checked": checked,
             "protocols": list(protocols),
-            **(details or {}),
+            **result_details,
             "last_run": datetime.now(timezone.utc).isoformat(),
         }
         self.async_update_listeners()
@@ -123,8 +145,13 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             )
         for mac, host in indexed.items():
             indexed[mac] = await self._discovery.async_enrich(host)
-        for host in indexed.values():
+        for mac, host in indexed.items():
+            identification = self.device_identifications.get(mac)
+            if identification:
+                host.update(identification)
             host.update(classify_device(host))
+            if identification and host.get("device_type_source") == "snmp_sys_object_id":
+                host["device_type_confidence"] = identification["device_type_confidence"]
             host.update(lookup_mac_vendor(host.get('mac')))
         _LOGGER.info("FRITZ!Box host scan completed: %d device(s) found", len(indexed))
         for host in indexed.values():
