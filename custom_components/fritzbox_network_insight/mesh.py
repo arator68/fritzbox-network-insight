@@ -62,7 +62,7 @@ def parse_mesh(payload: dict, hosts: dict[str, dict]) -> dict:
             if isinstance(item, dict)
         ] if isinstance(raw.get("node_interfaces"), list) else []
         macs = []
-        for value in [raw.get("device_mac_address")] + [
+        for value in [(raw.get("device_mac_address") or raw.get("device_mac") or raw.get("mac_address"))] + [
             item.get("mac_address") for item in interfaces
         ]:
             mac = normalize_mac(value)
@@ -71,20 +71,29 @@ def parse_mesh(payload: dict, hosts: dict[str, dict]) -> dict:
         # Prefer a host MAC on the same AVM node. Never join by hostname.
         canonical = next((mac for mac in macs if mac in hosts), None)
         if canonical is None:
-            canonical = normalize_mac(raw.get("device_mac_address"))
+            canonical = normalize_mac(raw.get("device_mac_address") or raw.get("device_mac") or raw.get("mac_address"))
         if canonical is None:
             continue
         nodes[uid] = {
             "uid": uid, "mac": canonical,
             "name": raw.get("name") or raw.get("device_name"),
-            "mesh_role": raw.get("mesh_role"),
+            "mesh_role": raw.get("mesh_role") or raw.get("role"),
             "interfaces": interfaces,
         }
         refs[uid.upper()] = uid
+        for ref in (raw.get("id"), raw.get("device_id"), raw.get("device_id_string"), raw.get("device_mac_address")):
+            if ref:
+                refs[str(ref).strip().upper()] = uid
         for mac in macs:
             aliases[mac] = canonical
 
     links = []
+    interface_refs = {}
+    for node_uid, node in nodes.items():
+        for interface in node["interfaces"]:
+            for ref in (interface.get("uid"), interface.get("id")):
+                if ref:
+                    interface_refs[str(ref).strip().upper()] = (node_uid, interface)
     seen = set()
     unresolved = 0
     for uid, node in nodes.items():
@@ -107,11 +116,19 @@ def parse_mesh(payload: dict, hosts: dict[str, dict]) -> dict:
                 if key in seen:
                     continue
                 seen.add(key)
+                int1 = interface_refs.get(str(raw_link.get("node_interface_1_uid") or "").strip().upper())
+                int2 = interface_refs.get(str(raw_link.get("node_interface_2_uid") or "").strip().upper())
                 links.append({
                     "source_mac": source, "target_mac": target,
                     "source_node_uid": first, "target_node_uid": second,
                     "source_mesh_role": nodes[first]["mesh_role"],
                     "target_mesh_role": nodes[second]["mesh_role"],
+                    "link_uid": raw_link.get("uid") or raw_link.get("id"),
+                    "source_interface": (int1[1].get("name") if int1 else None),
+                    "target_interface": (int2[1].get("name") if int2 else None),
+                    "source_interface_uid": raw_link.get("node_interface_1_uid"),
+                    "target_interface_uid": raw_link.get("node_interface_2_uid"),
+                    "learned_via_lldp": raw_link.get("learned_via_lldp"),
                     "link_type": raw_link.get("type"),
                     "link_state": raw_link.get("state"),
                     "evidence": "avm_mesh",
