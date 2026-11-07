@@ -183,10 +183,26 @@ class FritzBoxHostStatusSensor(
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, mac)},
             name=device_name,
-            manufacturer="Unknown",
-            model="Network device",
             connections={("mac", mac)},
         )
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Use verified identification in the HA device registry."""
+        host = self._host or {}
+        info = DeviceInfo(
+            identifiers={(DOMAIN, self._mac)},
+            connections={("mac", self._mac)},
+            name=str(host.get("name") or self._mac),
+        )
+        identification = self.coordinator.device_identifications.get(self._mac) or {}
+        manufacturer = identification.get("device_manufacturer")
+        model = identification.get("device_model")
+        if manufacturer:
+            info["manufacturer"] = manufacturer
+        if model:
+            info["model"] = model
+        return info
 
     @property
     def _host(self) -> dict[str, Any] | None:
