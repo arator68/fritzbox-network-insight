@@ -24,6 +24,17 @@ async def async_setup_entry(
     coordinator: FritzBoxDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     known_macs: set[str] = set()
 
+    # Migrate registered legacy IDs before creating/adding entities.
+    for mac, host in sorted((coordinator.data or {}).items()):
+        compact_mac = mac.replace(":", "").lower()
+        migrate_legacy_status_entity_id(
+            hass,
+            config_entry_id=entry.entry_id,
+            unique_id=f"host_{compact_mac}_status",
+            device_name=host.get("name") or mac,
+            target_entity_id=f"sensor.fritzbox_network_insight_{compact_mac}_status",
+        )
+
     entities: list[SensorEntity] = [FritzBoxDeviceCountSensor(coordinator, entry)]
     for mac in sorted((coordinator.data or {}).keys()):
         entities.append(FritzBoxHostStatusSensor(coordinator, entry, mac))
@@ -107,7 +118,6 @@ class FritzBoxHostStatusSensor(
     ) -> None:
         super().__init__(coordinator)
         self._mac = mac
-        self._config_entry_id = entry.entry_id
         compact_mac = mac.replace(":", "").lower()
         self._attr_unique_id = f"host_{compact_mac}_status"
 
@@ -117,7 +127,6 @@ class FritzBoxHostStatusSensor(
 
         host = (coordinator.data or {}).get(mac, {})
         device_name = host.get("name") or mac
-        self._initial_device_name = device_name
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, mac)},
             name=device_name,
@@ -126,20 +135,8 @@ class FritzBoxHostStatusSensor(
             connections={("mac", mac)},
         )
 
-    async def async_added_to_hass(self) -> None:
-        """Migrate a registered legacy ID after Home Assistant restores it."""
-        await super().async_added_to_hass()
-        migrate_legacy_status_entity_id(
-            self.hass,
-            config_entry_id=self._config_entry_id,
-            unique_id=self.unique_id,
-            device_name=self._initial_device_name,
-            target_entity_id=(
-                f"sensor.fritzbox_network_insight_"
-                f"{self._mac.replace(':', '').lower()}_status"
-            ),
-        )
-
+    @property
+    def _host(self) -> dict[str, Any] | None:
         """Return the latest host record for this MAC."""
         return (self.coordinator.data or {}).get(self._mac)
 
