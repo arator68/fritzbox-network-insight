@@ -52,6 +52,7 @@ async def async_setup_entry(
 
     entities: list[SensorEntity] = [
         FritzBoxDeviceCountSensor(coordinator, entry),
+        FritzBoxTopologySensor(coordinator, entry),
         ManualDiscoveryResultSensor(coordinator, entry),
     ]
     for mac in sorted((coordinator.data or {}).keys()):
@@ -228,3 +229,37 @@ class FritzBoxHostStatusSensor(
             "interface_type": host["interface_type"],
             "seen_in_latest_scan": True,
         }
+
+
+class FritzBoxTopologySensor(
+    CoordinatorEntity[FritzBoxDataUpdateCoordinator], SensorEntity
+):
+    """Expose last observed LLDP links, without implying live connectivity."""
+
+    _attr_has_entity_name = True
+    _attr_name = "LLDP-Topologie"
+    _attr_icon = "mdi:lan"
+
+    def __init__(
+        self,
+        coordinator: FritzBoxDataUpdateCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_lldp_topology"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=f"FRITZ!Box {entry.data.get('host', '')}",
+            manufacturer="AVM",
+            model="FRITZ!Box",
+        )
+
+    @property
+    def native_value(self) -> int:
+        """Number of observed LLDP links."""
+        return self.coordinator.get_topology_snapshot()["link_count"]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the central MAC-keyed topology model."""
+        return self.coordinator.get_topology_snapshot()

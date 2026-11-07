@@ -27,6 +27,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = FritzBoxDataUpdateCoordinator(hass, client, entry)
 
     await coordinator.async_load_identifications()
+    await coordinator.async_load_topology()
 
     try:
         await coordinator.async_config_entry_first_refresh()

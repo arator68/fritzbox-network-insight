@@ -20,6 +20,8 @@ from .mac_vendor import lookup_mac_vendor
 from .snmp_device_classifier import classify_snmp_system
 from .identification_store import IdentificationStore
 from .topology.lldp_matcher import match_lldp_neighbors
+from .topology.model import build_lldp_links, topology_snapshot
+from .topology.store import TopologyStore
 from .dns import resolve_dns_name
 from .fritzbox_client import (
     FritzBoxAuthenticationError,
@@ -43,6 +45,9 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self.discovery_results: dict[str | None, dict[str, Any]] = {}
         self.device_identifications: dict[str, dict[str, str]] = {}
         self.identification_store = IdentificationStore(hass, entry.entry_id)
+        self.topology_store = TopologyStore(hass, entry.entry_id)
+        self.topology_observations: dict[str, list[dict[str, Any]]] = {}
+        self._topology_save_lock = asyncio.Lock()
         self._identification_save_lock = asyncio.Lock()
         self._discovery = DiscoveryManager()
         self.entry = entry
@@ -58,6 +63,18 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
     async def async_load_identifications(self) -> None:
         """Restore verified identifications before the first FRITZ!Box scan."""
         self.device_identifications = await self.identification_store.async_load()
+
+    async def async_load_topology(self) -> None:
+        """Restore last-observed LLDP links; not a live connectivity claim."""
+        try:
+            self.topology_observations = await self.topology_store.async_load()
+        except Exception:
+            _LOGGER.exception("Could not load saved LLDP topology")
+            self.topology_observations = {}
+
+    def get_topology_snapshot(self) -> dict[str, Any]:
+        """Provide a single, dashboard-ready topology data model."""
+        return topology_snapshot(self.topology_observations, self.data or {})
 
     async def async_record_manual_discovery(
         self, mac: str | None, *, status: str, requested: int, checked: int,
@@ -88,6 +105,17 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                     ))
             except (ValueError, TypeError):
                 _LOGGER.debug("Could not parse LLDP neighbor observations")
+        topology_changed = False
+        if mac is not None and "snmp" in protocols and "lldp_neighbors" in result_details:
+            try:
+                parsed = json.loads(result_details["lldp_neighbors"])
+                if isinstance(parsed, list) and all(isinstance(n, dict) for n in parsed):
+                    links = build_lldp_links(mac, parsed)
+                    if mac in self.topology_observations or links:
+                        self.topology_observations[mac] = links
+                        topology_changed = True
+            except (ValueError, TypeError):
+                _LOGGER.debug("Invalid LLDP observations; retaining previous topology")
         changed = False
         if mac is not None and "snmp" in protocols:
             identified = classify_snmp_system(result_details)
@@ -118,6 +146,12 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             "last_run": datetime.now(timezone.utc).isoformat(),
         }
         self.async_update_listeners()
+        if topology_changed:
+            async with self._topology_save_lock:
+                try:
+                    await self.topology_store.async_save(self.topology_observations)
+                except Exception:
+                    _LOGGER.exception("Could not persist LLDP topology")
         if changed:
             async with self._identification_save_lock:
                 try:
