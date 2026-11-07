@@ -16,10 +16,10 @@ class TranslationTests(unittest.TestCase):
         self.assertEqual(english, json.loads((ROOT / "translations/en.json").read_text(encoding="utf-8")))
         for path in (ROOT / "strings.json", ROOT / "translations/en.json", ROOT / "translations/de.json"):
             data = json.loads(path.read_text(encoding="utf-8"))
-            self.assertTrue(SENSOR_KEYS <= data["sensor"].keys())
-            self.assertTrue(BUTTON_KEYS <= data["button"].keys())
-            self.assertTrue(HOST_STATES <= data["sensor"]["host_status"]["state"].keys())
-            self.assertTrue(DISCOVERY_STATES <= data["sensor"]["manual_discovery_result"]["state"].keys())
+            self.assertTrue(SENSOR_KEYS <= data["entity"]["sensor"].keys())
+            self.assertTrue(BUTTON_KEYS <= data["entity"]["button"].keys())
+            self.assertTrue(HOST_STATES <= data["entity"]["sensor"]["host_status"]["state"].keys())
+            self.assertTrue(DISCOVERY_STATES <= data["entity"]["sensor"]["manual_discovery_result"]["state"].keys())
 
     def test_entities_reference_translations(self):
         for filename, keys in (("sensor.py", SENSOR_KEYS - {"manual_discovery_result"}), ("discovery_result.py", {"manual_discovery_result"}), ("button.py", BUTTON_KEYS)):
