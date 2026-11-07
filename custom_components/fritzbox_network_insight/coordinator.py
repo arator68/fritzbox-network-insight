@@ -17,6 +17,7 @@ from .device_classifier import classify_device
 from .discovery import DiscoveryManager
 from .mac_vendor import lookup_mac_vendor
 from .snmp_device_classifier import classify_snmp_system
+from .identification_store import IdentificationStore
 from .dns import resolve_dns_name
 from .fritzbox_client import (
     FritzBoxAuthenticationError,
@@ -38,8 +39,9 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
     ) -> None:
         self.client = client
         self.discovery_results: dict[str | None, dict[str, Any]] = {}
-        # In-memory, MAC-keyed verified identifications; persistence is a later step.
         self.device_identifications: dict[str, dict[str, str]] = {}
+        self.identification_store = IdentificationStore(hass, entry.entry_id)
+        self._identification_save_lock = asyncio.Lock()
         self._discovery = DiscoveryManager()
         self.entry = entry
         self._dns_cache: dict[str, tuple[float, str | None]] = {}
@@ -51,16 +53,23 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             update_interval=DEFAULT_SCAN_INTERVAL,
         )
 
-    def record_manual_discovery(
+    async def async_load_identifications(self) -> None:
+        """Restore verified identifications before the first FRITZ!Box scan."""
+        self.device_identifications = await self.identification_store.async_load()
+
+    async def async_record_manual_discovery(
         self, mac: str | None, *, status: str, requested: int, checked: int,
         protocols: tuple[str, ...] = (), details: dict[str, str] | None = None
     ) -> None:
         """Publish a manual result and update verified MAC-based identification."""
         result_details = dict(details or {})
+        changed = False
         if mac is not None and "snmp" in protocols:
             identified = classify_snmp_system(result_details)
             if identified:
-                self.device_identifications[mac] = identified
+                if self.device_identifications.get(mac) != identified:
+                    self.device_identifications[mac] = identified
+                    changed = True
                 result_details.update({
                     "device_type": identified["detected_device_type"],
                     "device_type_source": identified["detected_device_type_source"],
@@ -84,6 +93,14 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             "last_run": datetime.now(timezone.utc).isoformat(),
         }
         self.async_update_listeners()
+        if changed:
+            async with self._identification_save_lock:
+                try:
+                    await self.identification_store.async_save(
+                        self.device_identifications
+                    )
+                except Exception:
+                    _LOGGER.exception("Could not persist device identification")
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         """Fetch hosts in the executor and index them by stable MAC address."""

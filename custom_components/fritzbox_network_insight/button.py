@@ -98,7 +98,7 @@ class DiscoverAllButton(
     async def async_press(self) -> None:
         """Perform discovery only on explicit button press."""
         result = await self._runner.async_run(dict(self.coordinator.data or {}))
-        self.coordinator.record_manual_discovery(
+        await self.coordinator.async_record_manual_discovery(
             None, status=result.status, requested=result.requested, checked=result.checked, protocols=result.protocols, details=result.details
         )
         _LOGGER.info(
@@ -139,7 +139,7 @@ class DiscoverHostButton(
         result = await self._runner.async_run(
             dict(self.coordinator.data or {}), self._mac
         )
-        self.coordinator.record_manual_discovery(
+        await self.coordinator.async_record_manual_discovery(
             self._mac, status=result.status, requested=result.requested, checked=result.checked, protocols=result.protocols, details=result.details
         )
         _LOGGER.info(
