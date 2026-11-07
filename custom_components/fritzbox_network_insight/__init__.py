@@ -73,3 +73,20 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload protocol adapters when user updates SNMP credentials."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Delete only persistent data owned by the removed config entry.
+
+    Home Assistant handles the entry's entities and devices. Do not remove
+    these stores on unload/reload; each key is scoped to this entry ID.
+    """
+    from homeassistant.helpers.storage import Store
+
+    keys = (
+        f"{DOMAIN}.identifications.{entry.entry_id}",
+        f"{DOMAIN}.topology.{entry.entry_id}",
+        f"{DOMAIN}.fdb.{entry.entry_id}",
+    )
+    for key in keys:
+        await Store(hass, 1, key).async_remove()
+    _LOGGER.info("Removed persistent FRITZ!Box Network Insight data for entry %s", entry.entry_id)
