@@ -127,13 +127,65 @@ async def async_read_fdb(engine: Any, user: Any, target: Any) -> dict[str, Any]:
             return rows
         return await asyncio.wait_for(_read(), timeout=READ_TIMEOUT)
 
-    try:
-        ports, statuses, bridge, names = await asyncio.gather(
-            _walk(FDB_PORT), _walk(FDB_STATUS),
-            _walk(BRIDGE_PORT_IFINDEX), _walk(IF_NAME),
+    async def _optional_walk(base: str) -> list[tuple[str, str]] | None:
+        # Unsupported or inaccessible MIB columns must not cancel other reads.
+        try:
+            return await _walk(base)
+        except Exception:
+            return None
+
+    q_ports, q_statuses, bridge_rows, name_rows = await asyncio.gather(
+        _optional_walk(Q_FDB_PORT),
+        _optional_walk(Q_FDB_STATUS),
+        _optional_walk(BRIDGE_PORT_IFINDEX),
+        _optional_walk(IF_NAME),
+    )
+    bridge = bridge_rows or []
+    names = name_rows or []
+
+    if q_ports:
+        # On the SG3428, this VLAN-aware table is the proven FDB source.
+        observations = correlate_q_fdb(
+            q_ports, q_statuses or [], bridge, names
         )
-        observations = correlate_fdb(ports, statuses, bridge, names)
-        return {"status": "ok", "entries": observations, "count": len(observations),
-                "truncated": len(ports) >= MAX_ROWS or len(observations) >= MAX_RESULTS}
-    except Exception:
-        return {"status": "unavailable", "source": "none", "entries": [], "count": 0, "raw_port_count": 0, "raw_status_count": 0, "truncated": False}
+        source = "q_bridge_mib_vlan_fdb"
+        raw_count = len(q_ports)
+        status_count = len(q_statuses or [])
+        truncated = raw_count >= MAX_ROWS or len(observations) >= MAX_RESULTS
+        return {
+            "status": "ok",
+            "source": source,
+            "entries": observations,
+            "count": len(observations),
+            "raw_port_count": raw_count,
+            "raw_status_count": status_count,
+            "truncated": truncated,
+        }
+
+    # Older switches may only implement the non-VLAN BRIDGE-MIB table.
+    ports, statuses = await asyncio.gather(
+        _optional_walk(FDB_PORT),
+        _optional_walk(FDB_STATUS),
+    )
+    if ports is None and q_ports is None:
+        return {
+            "status": "unavailable",
+            "source": "none",
+            "entries": [],
+            "count": 0,
+            "raw_port_count": 0,
+            "raw_status_count": 0,
+            "truncated": False,
+        }
+
+    observations = correlate_fdb(ports or [], statuses or [], bridge, names)
+    raw_count = len(ports or [])
+    return {
+        "status": "ok" if raw_count else "empty",
+        "source": "bridge_mib_fdb" if ports is not None else "q_bridge_mib_vlan_fdb",
+        "entries": observations,
+        "count": len(observations),
+        "raw_port_count": raw_count,
+        "raw_status_count": len(statuses or []),
+        "truncated": raw_count >= MAX_ROWS or len(observations) >= MAX_RESULTS,
+    }
