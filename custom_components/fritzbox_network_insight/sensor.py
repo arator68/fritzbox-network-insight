@@ -12,6 +12,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import FritzBoxDataUpdateCoordinator
+from .entity_id_migration import migrate_legacy_status_entity_id
 
 
 async def async_setup_entry(
@@ -22,6 +23,17 @@ async def async_setup_entry(
     """Create the overview sensor and one status sensor per discovered MAC."""
     coordinator: FritzBoxDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     known_macs: set[str] = set()
+
+    # Migrate registered legacy IDs before creating/adding entities.
+    for mac, host in sorted((coordinator.data or {}).items()):
+        compact_mac = mac.replace(":", "").lower()
+        migrate_legacy_status_entity_id(
+            hass,
+            config_entry_id=entry.entry_id,
+            unique_id=f"host_{compact_mac}_status",
+            device_name=host.get("name") or mac,
+            target_entity_id=f"sensor.fritzbox_network_insight_{compact_mac}_status",
+        )
 
     entities: list[SensorEntity] = [FritzBoxDeviceCountSensor(coordinator, entry)]
     for mac in sorted((coordinator.data or {}).keys()):
@@ -35,6 +47,17 @@ async def async_setup_entry(
         new_entities: list[SensorEntity] = []
         for mac in sorted((coordinator.data or {}).keys()):
             if mac not in known_macs:
+                compact_mac = mac.replace(":", "").lower()
+                host = (coordinator.data or {}).get(mac, {})
+                migrate_legacy_status_entity_id(
+                    hass,
+                    config_entry_id=entry.entry_id,
+                    unique_id=f"host_{compact_mac}_status",
+                    device_name=host.get("name") or mac,
+                    target_entity_id=(
+                        f"sensor.fritzbox_network_insight_{compact_mac}_status"
+                    ),
+                )
                 known_macs.add(mac)
                 new_entities.append(FritzBoxHostStatusSensor(coordinator, entry, mac))
         if new_entities:
