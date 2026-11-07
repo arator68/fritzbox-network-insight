@@ -108,6 +108,10 @@ class FritzBoxDeviceCountSensor(
                     "device_type": host.get("device_type"),
                     "device_type_source": host.get("device_type_source"),
                     "device_type_confidence": host.get("device_type_confidence"),
+                    "mac_vendor": host.get("mac_vendor"),
+                    "mac_vendor_prefix": host.get("mac_vendor_prefix"),
+                    "mac_vendor_source": host.get("mac_vendor_source"),
+                    "mac_vendor_status": host.get("mac_vendor_status"),
                     "active": host["active"],
                     "interface_type": host["interface_type"],
                 }
