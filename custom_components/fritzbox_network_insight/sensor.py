@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 from .coordinator import FritzBoxDataUpdateCoordinator
 from .entity_id_migration import migrate_legacy_status_entity_id
+from .discovery_result import ManualDiscoveryResultSensor
 
 
 async def async_setup_entry(
@@ -35,9 +36,13 @@ async def async_setup_entry(
             target_entity_id=f"sensor.fritzbox_network_insight_{compact_mac}_status",
         )
 
-    entities: list[SensorEntity] = [FritzBoxDeviceCountSensor(coordinator, entry)]
+    entities: list[SensorEntity] = [
+        FritzBoxDeviceCountSensor(coordinator, entry),
+        ManualDiscoveryResultSensor(coordinator, entry),
+    ]
     for mac in sorted((coordinator.data or {}).keys()):
         entities.append(FritzBoxHostStatusSensor(coordinator, entry, mac))
+        entities.append(ManualDiscoveryResultSensor(coordinator, entry, mac))
         known_macs.add(mac)
     async_add_entities(entities)
 
@@ -60,6 +65,7 @@ async def async_setup_entry(
                 )
                 known_macs.add(mac)
                 new_entities.append(FritzBoxHostStatusSensor(coordinator, entry, mac))
+                new_entities.append(ManualDiscoveryResultSensor(coordinator, entry, mac))
         if new_entities:
             async_add_entities(new_entities)
 
