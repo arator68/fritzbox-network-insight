@@ -139,7 +139,7 @@ class DiscoverHostButton(
         result = await self._runner.async_run(
             dict(self.coordinator.data or {}), self._mac
         )
-        self.coordinator.record_manual_discovery(
+        await self.coordinator.async_record_manual_discovery(
             self._mac, status=result.status, requested=result.requested, checked=result.checked, protocols=result.protocols, details=result.details
         )
         _LOGGER.info(
