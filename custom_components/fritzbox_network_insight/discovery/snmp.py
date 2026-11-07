@@ -57,7 +57,9 @@ class SnmpDiscoveryAdapter:
             target = await UdpTransportTarget.create(
                 (str(ip), 161), timeout=2, retries=0
             )
-            engine = SnmpEngine()
+            # PySNMP loads MIB files while constructing the engine. Keep this
+            # blocking disk I/O off Home Assistant's event loop.
+            engine = await asyncio.to_thread(SnmpEngine)
             try:
                 error_indication, error_status, _, var_binds = await asyncio.wait_for(
                     get_cmd(
