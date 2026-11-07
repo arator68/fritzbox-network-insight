@@ -38,6 +38,9 @@ class ManualDiscoveryResultSensor(
         else:
             compact_mac = mac.replace(":", "").lower()
             self._attr_unique_id = f"host_{compact_mac}_manual_discovery_result"
+            self.entity_id = (
+                f"sensor.fritzbox_network_insight_{compact_mac}_discovery_result"
+            )
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, mac)},
                 connections={("mac", mac)},
