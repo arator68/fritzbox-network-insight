@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -106,7 +106,7 @@ class FritzBoxDeviceCountSensor(
     """Expose the number of hosts currently returned by the FRITZ!Box."""
 
     _attr_has_entity_name = True
-    _attr_name = "Gefundene Geräte"
+    _attr_translation_key = "device_count"
     _attr_icon = "mdi:lan"
 
     def __init__(
@@ -162,7 +162,9 @@ class FritzBoxHostStatusSensor(
     """Expose the current status and metadata of one MAC-identified host."""
 
     _attr_has_entity_name = True
-    _attr_name = "Status"
+    _attr_translation_key = "host_status"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["online", "offline", "unbekannt", "nicht_gefunden"]
     _attr_icon = "mdi:lan-connect"
 
     def __init__(
@@ -216,7 +218,7 @@ class FritzBoxHostStatusSensor(
         """Return online, offline, unknown, or not seen in the latest scan."""
         host = self._host
         if host is None:
-            return "nicht gefunden"
+            return "nicht_gefunden"
         if host["active"] is True:
             return "online"
         if host["active"] is False:
@@ -255,7 +257,7 @@ class FritzBoxTopologySensor(
     """Expose last observed LLDP links, without implying live connectivity."""
 
     _attr_has_entity_name = True
-    _attr_name = "LLDP-Topologie"
+    _attr_translation_key = "lldp_topology"
     _attr_icon = "mdi:lan"
 
     def __init__(
@@ -289,7 +291,7 @@ class FritzBoxFdbTopologySensor(
     """Last manually observed MAC reachability via switch ports."""
 
     _attr_has_entity_name = True
-    _attr_name = "FDB-Portzuordnung"
+    _attr_translation_key = "fdb_topology"
     _attr_icon = "mdi:lan"
 
     def __init__(
@@ -345,7 +347,7 @@ class FritzBoxCombinedTopologySensor(
     """Overview of distinct confirmed LLDP links and FDB port reachability."""
 
     _attr_has_entity_name = True
-    _attr_name = "Netzwerktopologie"
+    _attr_translation_key = "combined_topology"
     _attr_icon = "mdi:lan"
 
     def __init__(
