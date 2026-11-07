@@ -33,6 +33,11 @@ def _load_registry() -> dict[str, str]:
     return entries
 
 
+def preload_mac_vendor_registry() -> None:
+    """Warm the cached CSV in an executor before the first host scan."""
+    _load_registry()
+
+
 def lookup_mac_vendor(mac: Any) -> dict[str, str | None]:
     """Return registered prefix owner, never a guessed device manufacturer."""
     result: dict[str, str | None] = {
