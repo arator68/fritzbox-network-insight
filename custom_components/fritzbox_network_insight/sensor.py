@@ -47,6 +47,17 @@ async def async_setup_entry(
         new_entities: list[SensorEntity] = []
         for mac in sorted((coordinator.data or {}).keys()):
             if mac not in known_macs:
+                compact_mac = mac.replace(":", "").lower()
+                host = (coordinator.data or {}).get(mac, {})
+                migrate_legacy_status_entity_id(
+                    hass,
+                    config_entry_id=entry.entry_id,
+                    unique_id=f"host_{compact_mac}_status",
+                    device_name=host.get("name") or mac,
+                    target_entity_id=(
+                        f"sensor.fritzbox_network_insight_{compact_mac}_status"
+                    ),
+                )
                 known_macs.add(mac)
                 new_entities.append(FritzBoxHostStatusSensor(coordinator, entry, mac))
         if new_entities:
