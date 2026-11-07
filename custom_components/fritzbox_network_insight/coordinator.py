@@ -18,6 +18,7 @@ from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
 from .device_classifier import classify_device
 from .discovery import DiscoveryManager
 from .mac_vendor import lookup_mac_vendor
+from .mesh import fetch_mesh, parse_mesh
 from .snmp_device_classifier import classify_snmp_system
 from .identification_store import IdentificationStore
 from .topology.lldp_matcher import match_lldp_neighbors
@@ -57,6 +58,8 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self._identification_save_lock = asyncio.Lock()
         self._discovery = DiscoveryManager()
         self.entry = entry
+        self.mesh_topology: dict[str, Any] = {"nodes": [], "links": [], "aliases": {}}
+        self._mesh_last_attempt: float = 0.0
         self._dns_cache: dict[str, tuple[float, str | None]] = {}
         self._dns_semaphore = asyncio.Semaphore(4)
         super().__init__(
@@ -109,6 +112,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             self.topology_observations,
             self.fdb_observations,
             self.data or {},
+            self.mesh_topology,
         )
 
     def get_topology_snapshot(self) -> dict[str, Any]:
@@ -258,6 +262,29 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             raise UpdateFailed("Unexpected error while retrieving FRITZ!Box hosts") from err
 
         indexed = {host["mac"]: host for host in hosts}
+        # Mesh refresh every 15 minutes; keep the last successful result.
+        now_mesh = monotonic()
+        if not self._mesh_last_attempt or now_mesh - self._mesh_last_attempt >= 900:
+            self._mesh_last_attempt = now_mesh
+            try:
+                payload = await self.hass.async_add_executor_job(
+                    fetch_mesh, self.client.host, self.client.username,
+                    self.client.password, self.client.timeout,
+                )
+                self.mesh_topology = parse_mesh(payload, indexed)
+            except Exception as err:
+                _LOGGER.warning("AVM Mesh refresh failed; retaining previous data: %s", err)
+        mesh_nodes = {node["mac"]: node for node in self.mesh_topology.get("nodes", [])}
+        for mac, host in indexed.items():
+            canonical = self.mesh_topology.get("aliases", {}).get(mac, mac)
+            node = mesh_nodes.get(canonical)
+            if node:
+                host["mesh_role"] = node.get("mesh_role")
+                host["mesh_node_uid"] = node.get("uid")
+                host["mesh_identity_mac"] = canonical
+                if str(node.get("mesh_role") or "").lower() == "slave":
+                    host["device_manufacturer"] = "AVM"
+
         # DNS is optional metadata: lookup failures never fail the FRITZ!Box scan.
         # Cache positive and negative results for 15 minutes per IP address.
         addresses = {
