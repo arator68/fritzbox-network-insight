@@ -49,13 +49,15 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         )
 
     def record_manual_discovery(
-        self, mac: str | None, *, status: str, requested: int, checked: int,\n        protocols: tuple[str, ...] = ()
+        self, mac: str | None, *, status: str, requested: int, checked: int,
+        protocols: tuple[str, ...] = ()
     ) -> None:
         """Publish the latest manual result without triggering a network scan."""
         self.discovery_results[mac] = {
             "status": status,
             "requested": requested,
-            "checked": checked,\n            "protocols": list(protocols),
+            "checked": checked,
+            "protocols": list(protocols),
             "last_run": datetime.now(timezone.utc).isoformat(),
         }
         self.async_update_listeners()
