@@ -87,7 +87,12 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                     name = None
                 self._dns_cache[ip] = (monotonic() + 900, name)
 
-        await asyncio.gather(*(_resolve(ip) for ip in addresses))
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*(_resolve(ip) for ip in addresses)), timeout=8
+            )
+        except TimeoutError:
+            _LOGGER.debug("DNS enrichment timed out; continuing host scan")
         for host in indexed.values():
             ip = host.get("ip_address")
             host["dns_name"] = (
