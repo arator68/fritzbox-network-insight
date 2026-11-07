@@ -78,7 +78,7 @@ class DiscoverAllButton(
     """Request discovery for all known hosts."""
 
     _attr_has_entity_name = True
-    _attr_name = "Geräteerkennung starten"
+    _attr_translation_key = "manual_discovery"
     _attr_icon = "mdi:radar"
 
     def __init__(
@@ -113,7 +113,7 @@ class DiscoverHostButton(
     """Request discovery for one stable MAC identity."""
 
     _attr_has_entity_name = True
-    _attr_name = "Geräteerkennung starten"
+    _attr_translation_key = "manual_discovery"
     _attr_icon = "mdi:radar"
 
     def __init__(
