@@ -18,5 +18,45 @@
     "abort": {
       "already_configured": "Diese FRITZ!Box ist bereits eingerichtet."
     }
+  },
+  "entity": {
+    "button": {
+      "manual_discovery": {
+        "name": "Geräteerkennung starten"
+      }
+    },
+    "sensor": {
+      "device_count": {
+        "name": "Gefundene Geräte"
+      },
+      "lldp_topology": {
+        "name": "LLDP-Topologie"
+      },
+      "fdb_topology": {
+        "name": "FDB-Portzuordnung"
+      },
+      "combined_topology": {
+        "name": "Netzwerktopologie"
+      },
+      "host_status": {
+        "name": "Status",
+        "state": {
+          "online": "Online",
+          "offline": "Offline",
+          "unbekannt": "Unbekannt",
+          "nicht_gefunden": "Nicht gefunden"
+        }
+      },
+      "manual_discovery_result": {
+        "name": "Ergebnis Geräteerkennung",
+        "state": {
+          "not_started": "Nicht gestartet",
+          "responded": "Antwort erhalten",
+          "no_response": "Keine Antwort",
+          "no_targets": "Keine Zielgeräte",
+          "no_adapters_configured": "Keine Erkennungsmodule eingerichtet"
+        }
+      }
+    }
   }
 }
