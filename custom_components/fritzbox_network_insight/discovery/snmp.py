@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import json
 from collections.abc import Mapping
 from typing import Any
 
 from . import DiscoveryEvidence
+from .lldp import async_read_lldp
 
 SYS_DESCR = "1.3.6.1.2.1.1.1.0"
 SYS_OBJECT_ID = "1.3.6.1.2.1.1.2.0"
@@ -65,17 +67,20 @@ class SnmpDiscoveryAdapter:
                     ),
                     timeout=4,
                 )
+                if error_indication or error_status:
+                    return None
+                values = {str(oid): str(value) for oid, value in var_binds}
+                if not values:
+                    return None
+                neighbors = await async_read_lldp(engine, user, target)
             finally:
                 engine.close_dispatcher()
-            if error_indication or error_status:
-                return None
-            values = {str(oid): str(value) for oid, value in var_binds}
-            if not values:
-                return None
             self.results[mac] = {
                 "sys_descr": values.get(SYS_DESCR, ""),
                 "sys_object_id": values.get(SYS_OBJECT_ID, ""),
                 "sys_name": values.get(SYS_NAME, ""),
+                "lldp_neighbor_count": str(len(neighbors)),
+                "lldp_neighbors": json.dumps(neighbors, ensure_ascii=False),
             }
             return DiscoveryEvidence(source="snmp_v3", protocol="snmp")
         except Exception:
