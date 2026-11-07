@@ -14,8 +14,27 @@ from .const import DOMAIN
 from .coordinator import FritzBoxDataUpdateCoordinator
 from .discovery.manual import ManualDiscoveryRunner
 from .discovery.ssdp import SsdpDiscoveryAdapter
+from .discovery.snmp import SnmpDiscoveryAdapter
+from .entity_id_migration import migrate_legacy_device_entity_id
 
 _LOGGER = logging.getLogger(__name__)
+
+
+
+def _migrate_discovery_button(
+    hass: HomeAssistant, entry: ConfigEntry, mac: str, host: dict
+) -> None:
+    """Preserve the existing entity registry entry and user customizations."""
+    compact_mac = mac.replace(":", "").lower()
+    migrate_legacy_device_entity_id(
+        hass,
+        config_entry_id=entry.entry_id,
+        platform="button",
+        unique_id=f"host_{compact_mac}_manual_discovery",
+        device_name=host.get("name") or mac,
+        legacy_entity_names=("Geräteerkennung starten",),
+        target_entity_id=f"button.fritzbox_network_insight_{compact_mac}_discover",
+    )
 
 
 async def async_setup_entry(
@@ -25,10 +44,14 @@ async def async_setup_entry(
 ) -> None:
     """Add one global and one per-device explicit discovery button."""
     coordinator: FritzBoxDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
-    runner = ManualDiscoveryRunner((SsdpDiscoveryAdapter(),))
+    runner = ManualDiscoveryRunner((
+        SsdpDiscoveryAdapter(),
+        SnmpDiscoveryAdapter(entry.options.get('snmp_devices', {})),
+    ))
     known_macs: set[str] = set()
     buttons: list[ButtonEntity] = [DiscoverAllButton(coordinator, entry, runner)]
-    for mac in sorted((coordinator.data or {})):
+    for mac, host in sorted((coordinator.data or {}).items()):
+        _migrate_discovery_button(hass, entry, mac, host)
         buttons.append(DiscoverHostButton(coordinator, entry, runner, mac))
         known_macs.add(mac)
     async_add_entities(buttons)
@@ -38,6 +61,9 @@ async def async_setup_entry(
         new_buttons: list[ButtonEntity] = []
         for mac in sorted((coordinator.data or {})):
             if mac not in known_macs:
+                _migrate_discovery_button(
+                    hass, entry, mac, (coordinator.data or {})[mac]
+                )
                 known_macs.add(mac)
                 new_buttons.append(DiscoverHostButton(coordinator, entry, runner, mac))
         if new_buttons:
@@ -73,7 +99,7 @@ class DiscoverAllButton(
         """Perform discovery only on explicit button press."""
         result = await self._runner.async_run(dict(self.coordinator.data or {}))
         self.coordinator.record_manual_discovery(
-            None, status=result.status, requested=result.requested, checked=result.checked, protocols=result.protocols
+            None, status=result.status, requested=result.requested, checked=result.checked, protocols=result.protocols, details=result.details
         )
         _LOGGER.info(
             "Manual discovery for all devices: %s (%d requested, %d checked)",
@@ -100,7 +126,9 @@ class DiscoverHostButton(
         super().__init__(coordinator)
         self._runner = runner
         self._mac = mac
-        self._attr_unique_id = f"host_{mac.replace(':', '').lower()}_manual_discovery"
+        compact_mac = mac.replace(":", "").lower()
+        self._attr_unique_id = f"host_{compact_mac}_manual_discovery"
+        self.entity_id = f"button.fritzbox_network_insight_{compact_mac}_discover"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, mac)},
             connections={("mac", mac)},
@@ -112,7 +140,7 @@ class DiscoverHostButton(
             dict(self.coordinator.data or {}), self._mac
         )
         self.coordinator.record_manual_discovery(
-            self._mac, status=result.status, requested=result.requested, checked=result.checked
+            self._mac, status=result.status, requested=result.requested, checked=result.checked, protocols=result.protocols, details=result.details
         )
         _LOGGER.info(
             "Manual discovery for %s: %s (%d checked)",

@@ -16,6 +16,7 @@ class ManualDiscoveryResult:
     checked: int
     status: str
     protocols: tuple[str, ...] = ()
+    details: dict[str, str] | None = None
 
 
 class ManualDiscoveryRunner:
@@ -58,9 +59,12 @@ class ManualDiscoveryRunner:
 
             discovered = await asyncio.gather(*(_check(host) for host in targets))
         protocols = tuple(sorted(set().union(*discovered)))
+        details: dict[str, str] = {}
+        if mac is not None:
+            for adapter in self._adapters:
+                if adapter.name == "snmp":
+                    details = dict(getattr(adapter, "results", {}).get(mac, {}))
         return ManualDiscoveryResult(
-            len(targets),
-            len(targets),
-            "responded" if protocols else "no_response",
-            protocols,
+            len(targets), len(targets),
+            "responded" if protocols else "no_response", protocols, details,
         )

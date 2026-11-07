@@ -74,3 +74,67 @@ def migrate_legacy_status_entity_id(
         current_entity_id,
         target_entity_id,
     )
+
+
+def migrate_legacy_device_entity_id(
+    hass: HomeAssistant,
+    *,
+    config_entry_id: str,
+    platform: str,
+    unique_id: str,
+    device_name: str,
+    legacy_entity_names: tuple[str, ...],
+    target_entity_id: str,
+) -> None:
+    """Migrate an unchanged auto-generated device entity ID, never custom IDs.
+
+    Match the original device name and known entity labels only. Keep the
+    unique_id unchanged so the registry retains the existing entity.
+    """
+    registry = er.async_get(hass)
+    current_entity_id = registry.async_get_entity_id(platform, DOMAIN, unique_id)
+    if current_entity_id is None or current_entity_id == target_entity_id:
+        return
+
+    entry = registry.async_get(current_entity_id)
+    if entry is None or entry.config_entry_id != config_entry_id:
+        return
+    if entry.name is not None:
+        return
+
+    legacy_ids = {
+        f"{platform}.{slugify(device_name + ' ' + label)}"
+        for label in legacy_entity_names
+    }
+    # Home Assistant may append _2 to its generated IDs on collision.
+    legacy_ids |= {f"{entity_id}_2" for entity_id in tuple(legacy_ids)}
+    if current_entity_id not in legacy_ids:
+        return
+
+    if registry.async_get(target_entity_id) is not None:
+        _LOGGER.warning(
+            "Skipping entity ID migration for %s: %s is occupied",
+            current_entity_id, target_entity_id,
+        )
+        return
+    if hass.states.get(target_entity_id) is not None:
+        _LOGGER.warning(
+            "Skipping entity ID migration for %s: %s has a state",
+            current_entity_id, target_entity_id,
+        )
+        return
+
+    try:
+        registry.async_update_entity(
+            current_entity_id, new_entity_id=target_entity_id
+        )
+    except ValueError:
+        _LOGGER.exception(
+            "Could not migrate entity ID %s to %s",
+            current_entity_id, target_entity_id,
+        )
+        return
+    _LOGGER.info(
+        "Migrated FRITZ!Box Network Insight entity ID: %s -> %s",
+        current_entity_id, target_entity_id,
+    )

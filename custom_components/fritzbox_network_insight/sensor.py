@@ -12,7 +12,10 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import FritzBoxDataUpdateCoordinator
-from .entity_id_migration import migrate_legacy_status_entity_id
+from .entity_id_migration import (
+    migrate_legacy_status_entity_id,
+    migrate_legacy_device_entity_id,
+)
 from .discovery_result import ManualDiscoveryResultSensor
 
 
@@ -34,6 +37,17 @@ async def async_setup_entry(
             unique_id=f"host_{compact_mac}_status",
             device_name=host.get("name") or mac,
             target_entity_id=f"sensor.fritzbox_network_insight_{compact_mac}_status",
+        )
+        migrate_legacy_device_entity_id(
+            hass,
+            config_entry_id=entry.entry_id,
+            platform="sensor",
+            unique_id=f"host_{compact_mac}_manual_discovery_result",
+            device_name=host.get("name") or mac,
+            legacy_entity_names=("Ergebnis Geräteerkennung",),
+            target_entity_id=(
+                f"sensor.fritzbox_network_insight_{compact_mac}_discovery_result"
+            ),
         )
 
     entities: list[SensorEntity] = [
@@ -61,6 +75,17 @@ async def async_setup_entry(
                     device_name=host.get("name") or mac,
                     target_entity_id=(
                         f"sensor.fritzbox_network_insight_{compact_mac}_status"
+                    ),
+                )
+                migrate_legacy_device_entity_id(
+                    hass,
+                    config_entry_id=entry.entry_id,
+                    platform="sensor",
+                    unique_id=f"host_{compact_mac}_manual_discovery_result",
+                    device_name=host.get("name") or mac,
+                    legacy_entity_names=("Ergebnis Geräteerkennung",),
+                    target_entity_id=(
+                        f"sensor.fritzbox_network_insight_{compact_mac}_discovery_result"
                     ),
                 )
                 known_macs.add(mac)
