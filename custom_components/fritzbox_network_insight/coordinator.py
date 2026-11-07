@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from time import monotonic
+from datetime import datetime, timezone
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -35,6 +36,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         entry: ConfigEntry,
     ) -> None:
         self.client = client
+        self.discovery_results: dict[str | None, dict[str, Any]] = {}
         self._discovery = DiscoveryManager()
         self.entry = entry
         self._dns_cache: dict[str, tuple[float, str | None]] = {}
@@ -45,6 +47,18 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             name=f"{DOMAIN}_{entry.entry_id}",
             update_interval=DEFAULT_SCAN_INTERVAL,
         )
+
+    def record_manual_discovery(
+        self, mac: str | None, *, status: str, requested: int, checked: int
+    ) -> None:
+        """Publish the latest manual result without triggering a network scan."""
+        self.discovery_results[mac] = {
+            "status": status,
+            "requested": requested,
+            "checked": checked,
+            "last_run": datetime.now(timezone.utc).isoformat(),
+        }
+        self.async_update_listeners()
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         """Fetch hosts in the executor and index them by stable MAC address."""
