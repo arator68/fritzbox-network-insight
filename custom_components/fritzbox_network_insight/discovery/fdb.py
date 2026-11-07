@@ -8,6 +8,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+Q_FDB_PORT = "1.3.6.1.2.1.17.7.1.2.2.1.2"
+Q_FDB_STATUS = "1.3.6.1.2.1.17.7.1.2.2.1.3"
 FDB_PORT = "1.3.6.1.2.1.17.4.3.1.2"
 FDB_STATUS = "1.3.6.1.2.1.17.4.3.1.3"
 BRIDGE_PORT_IFINDEX = "1.3.6.1.2.1.17.1.4.1.2"
@@ -45,7 +47,7 @@ def correlate_fdb(
         if mac is None or mac in seen or not bridge_port.isdecimal():
             continue
         # dot1dTpFdbStatus: 3 = learned. Exclude self/static/invalid.
-        if statuses.get(suffix) != "3":
+        if statuses and statuses.get(suffix) != "3":
             continue
         seen.add(mac)
         if_index = bridge.get(bridge_port, "")
@@ -55,6 +57,43 @@ def correlate_fdb(
             "if_index": if_index,
             "interface_name": names.get(if_index, "")[:128],
             "evidence": "bridge_mib_dynamic_fdb",
+            "connection": "reachable_via_port",
+        })
+        if len(results) >= MAX_RESULTS:
+            break
+    return results
+
+
+def correlate_q_fdb(
+    port_rows: list[tuple[str, str]],
+    status_rows: list[tuple[str, str]],
+    bridge_rows: list[tuple[str, str]],
+    name_rows: list[tuple[str, str]],
+) -> list[dict[str, str]]:
+    """Decode VLAN + MAC from Q-BRIDGE-MIB and resolve bridge ports."""
+    statuses = dict(status_rows)
+    bridge = dict(bridge_rows)
+    names = dict(name_rows)
+    results: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for suffix, port in port_rows:
+        parts = suffix.split(".")
+        if len(parts) != 7 or not parts[0].isdecimal():
+            continue
+        vlan = parts[0]
+        mac = mac_from_oid_suffix(".".join(parts[1:]))
+        if mac is None or not port.isdecimal() or int(port) == 0:
+            continue
+        if statuses and statuses.get(suffix) != "3":
+            continue
+        if (vlan, mac) in seen:
+            continue
+        seen.add((vlan, mac))
+        if_index = bridge.get(port, "")
+        results.append({
+            "mac": mac, "vlan_id": vlan, "bridge_port": port,
+            "if_index": if_index, "interface_name": names.get(if_index, "")[:128],
+            "evidence": "q_bridge_mib_vlan_fdb",
             "connection": "reachable_via_port",
         })
         if len(results) >= MAX_RESULTS:
@@ -97,4 +136,4 @@ async def async_read_fdb(engine: Any, user: Any, target: Any) -> dict[str, Any]:
         return {"status": "ok", "entries": observations, "count": len(observations),
                 "truncated": len(ports) >= MAX_ROWS or len(observations) >= MAX_RESULTS}
     except Exception:
-        return {"status": "unavailable", "entries": [], "count": 0, "truncated": False}
+        return {"status": "unavailable", "source": "none", "entries": [], "count": 0, "raw_port_count": 0, "raw_status_count": 0, "truncated": False}
