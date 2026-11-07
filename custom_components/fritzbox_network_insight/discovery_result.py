@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -18,7 +18,8 @@ class ManualDiscoveryResultSensor(
     """Expose the latest explicit discovery attempt, not a protocol support claim."""
 
     _attr_has_entity_name = True
-    _attr_name = "Ergebnis Geräteerkennung"
+    _attr_translation_key = "manual_discovery_result"
+    _attr_device_class = SensorDeviceClass.ENUM
     _attr_icon = "mdi:radar"
 
     def __init__(
