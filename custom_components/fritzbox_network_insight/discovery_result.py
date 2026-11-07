@@ -20,6 +20,7 @@ class ManualDiscoveryResultSensor(
     _attr_has_entity_name = True
     _attr_translation_key = "manual_discovery_result"
     _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["not_started", "responded", "no_response", "no_targets", "no_adapters_configured"]
     _attr_icon = "mdi:radar"
 
     def __init__(
