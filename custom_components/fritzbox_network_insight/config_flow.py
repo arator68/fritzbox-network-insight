@@ -8,6 +8,7 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
+from homeassistant.helpers import selector
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
@@ -52,6 +53,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    @staticmethod
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
+        return SnmpOptionsFlow()
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> dict[str, Any]:
@@ -85,4 +90,43 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=schema,
             errors=errors,
+        )
+
+
+class SnmpOptionsFlow(config_entries.OptionsFlow):
+    """Configure one SNMPv3 device by MAC; retain other configured devices."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        hosts = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+        choices = {
+            mac: f"{host.get('name') or mac} ({mac})"
+            for mac, host in sorted((hosts.data or {}).items())
+        } if hosts is not None else {}
+        if not choices:
+            return self.async_abort(reason="no_devices")
+        if user_input is not None:
+            mac = user_input["mac"]
+            devices = dict(self.config_entry.options.get("snmp_devices", {}))
+            devices[mac] = {
+                "username": user_input["snmp_username"],
+                "auth_password": user_input["auth_password"],
+                "priv_password": user_input["priv_password"],
+            }
+            return self.async_create_entry(
+                title="", data={**self.config_entry.options, "snmp_devices": devices}
+            )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema({
+                vol.Required("mac"): vol.In(choices),
+                vol.Required("snmp_username"): str,
+                vol.Required("auth_password"): selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+                ),
+                vol.Required("priv_password"): selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+                ),
+            }),
         )
