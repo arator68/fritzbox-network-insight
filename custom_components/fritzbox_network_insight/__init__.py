@@ -11,6 +11,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from .const import DOMAIN
 from .coordinator import FritzBoxDataUpdateCoordinator
 from .fritzbox_client import FritzBoxClient
+from .mac_vendor import preload_mac_vendor_registry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,6 +29,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await coordinator.async_load_identifications()
     await coordinator.async_load_topology()
+    # IEEE vendor CSV must be read outside the HA event loop.
+    await hass.async_add_executor_job(preload_mac_vendor_registry)
 
     try:
         await coordinator.async_config_entry_first_refresh()
