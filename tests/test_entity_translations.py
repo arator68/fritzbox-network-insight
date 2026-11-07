@@ -6,7 +6,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1] / "custom_components/fritzbox_network_insight"
 SENSOR_KEYS = {"device_count", "host_status", "lldp_topology", "fdb_topology", "combined_topology", "manual_discovery_result"}
 BUTTON_KEYS = {"manual_discovery"}
-HOST_STATES = {"online", "offline", "unbekannt", "nicht gefunden"}
+HOST_STATES = {"online", "offline", "unbekannt", "nicht_gefunden"}
 DISCOVERY_STATES = {"not_started", "responded", "no_response", "no_targets", "no_adapters_configured"}
 
 
