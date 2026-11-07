@@ -201,6 +201,8 @@ class FritzBoxHostStatusSensor(
         )
         identification = self.coordinator.device_identifications.get(self._mac) or {}
         manufacturer = identification.get("device_manufacturer")
+        if not manufacturer and host.get("mac_vendor_status") == "matched":
+            manufacturer = host.get("mac_vendor")
         model = identification.get("device_model")
         if manufacturer:
             info["manufacturer"] = manufacturer
