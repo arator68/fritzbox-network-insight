@@ -49,7 +49,8 @@ class ManualDiscoveryRunner:
                     for adapter in self._adapters:
                         try:
                             evidence = await asyncio.wait_for(
-                                adapter.async_discover(host), timeout=4
+                                adapter.async_discover(host),
+                                timeout=10 if adapter.name == "snmp" else 4
                             )
                         except (Exception, TimeoutError):
                             continue
