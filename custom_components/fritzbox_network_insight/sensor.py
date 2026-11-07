@@ -54,6 +54,7 @@ async def async_setup_entry(
         FritzBoxDeviceCountSensor(coordinator, entry),
         FritzBoxTopologySensor(coordinator, entry),
         FritzBoxFdbTopologySensor(coordinator, entry),
+        FritzBoxCombinedTopologySensor(coordinator, entry),
         ManualDiscoveryResultSensor(coordinator, entry),
     ]
     for mac in sorted((coordinator.data or {}).keys()):
@@ -335,4 +336,54 @@ class FritzBoxFdbTopologySensor(
             "evidence": snapshot["evidence"],
             "connection": snapshot["connection"],
             "ports": list(by_port.values())[:64],
+        }
+
+
+class FritzBoxCombinedTopologySensor(
+    CoordinatorEntity[FritzBoxDataUpdateCoordinator], SensorEntity
+):
+    """Overview of distinct confirmed LLDP links and FDB port reachability."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Netzwerktopologie"
+    _attr_icon = "mdi:lan"
+
+    def __init__(
+        self,
+        coordinator: FritzBoxDataUpdateCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_combined_topology"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=f"FRITZ!Box {entry.data.get('host', '')}",
+            manufacturer="AVM",
+            model="FRITZ!Box",
+        )
+
+    @property
+    def native_value(self) -> int:
+        """Number of MAC-keyed nodes in the combined observation model."""
+        return self.coordinator.get_combined_topology_snapshot()["node_count"]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Bounded preview; full observations remain in their original stores."""
+        snapshot = self.coordinator.get_combined_topology_snapshot()
+        return {
+            "node_count": snapshot["node_count"],
+            "direct_link_count": snapshot["direct_link_count"],
+            "reachability_count": snapshot["reachability_count"],
+            "lldp_source_count": snapshot["lldp_source_count"],
+            "fdb_source_count": snapshot["fdb_source_count"],
+            "evidence": snapshot["evidence"],
+            "direct_links": snapshot["direct_links"][:16],
+            "reachable_via_port_sample": snapshot["reachable_via_port"][:16],
+            "nodes_sample": snapshot["nodes"][:16],
+            "samples_truncated": (
+                len(snapshot["reachable_via_port"]) > 16
+                or len(snapshot["nodes"]) > 16
+                or len(snapshot["direct_links"]) > 16
+            ),
         }
