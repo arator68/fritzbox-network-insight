@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
 from .device_classifier import classify_device
+from .discovery import DiscoveryManager
 from .mac_vendor import lookup_mac_vendor
 from .dns import resolve_dns_name
 from .fritzbox_client import (
@@ -34,6 +35,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         entry: ConfigEntry,
     ) -> None:
         self.client = client
+        self._discovery = DiscoveryManager()
         self.entry = entry
         self._dns_cache: dict[str, tuple[float, str | None]] = {}
         self._dns_semaphore = asyncio.Semaphore(4)
@@ -102,6 +104,8 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                 if ip and ip in self._dns_cache
                 else None
             )
+        for mac, host in indexed.items():
+            indexed[mac] = await self._discovery.async_enrich(host)
         for host in indexed.values():
             host.update(classify_device(host))
             host.update(lookup_mac_vendor(host.get('mac')))
