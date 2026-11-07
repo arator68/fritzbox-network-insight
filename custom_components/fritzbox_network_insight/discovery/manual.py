@@ -1,11 +1,11 @@
-"""Explicit, bounded discovery execution; never called by the periodic scan."""
+"""Explicit, bounded protocol discovery; never called by periodic scans."""
 from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
 from typing import Any
 
-from . import DiscoveryAdapter, DiscoveryManager
+from . import DiscoveryAdapter
 
 
 @dataclass(frozen=True)
@@ -15,10 +15,11 @@ class ManualDiscoveryResult:
     requested: int
     checked: int
     status: str
+    protocols: tuple[str, ...] = ()
 
 
 class ManualDiscoveryRunner:
-    """Run optional adapters only after a direct user action."""
+    """Execute protocol adapters only when the user presses a button."""
 
     def __init__(self, adapters: tuple[DiscoveryAdapter, ...] = ()) -> None:
         self._adapters = adapters
@@ -27,7 +28,7 @@ class ManualDiscoveryRunner:
     async def async_run(
         self, hosts: dict[str, dict[str, Any]], mac: str | None = None
     ) -> ManualDiscoveryResult:
-        """Inspect one MAC or all known hosts without scanning arbitrary IPs."""
+        """Probe only selected known hosts, with bounded concurrency and time."""
         targets = (
             [hosts[mac]] if mac is not None and mac in hosts
             else list(hosts.values()) if mac is None
@@ -39,15 +40,27 @@ class ManualDiscoveryRunner:
             return ManualDiscoveryResult(len(targets), 0, "no_adapters_configured")
 
         async with self._lock:
-            manager = DiscoveryManager(self._adapters, active_enabled=True)
             semaphore = asyncio.Semaphore(3)
 
-            async def _check(host: dict[str, Any]) -> None:
+            async def _check(host: dict[str, Any]) -> set[str]:
+                found: set[str] = set()
                 async with semaphore:
-                    try:
-                        await asyncio.wait_for(manager.async_enrich(host), timeout=8)
-                    except TimeoutError:
-                        pass
+                    for adapter in self._adapters:
+                        try:
+                            evidence = await asyncio.wait_for(
+                                adapter.async_discover(host), timeout=4
+                            )
+                        except (Exception, TimeoutError):
+                            continue
+                        if evidence is not None and evidence.protocol:
+                            found.add(evidence.protocol)
+                return found
 
-            await asyncio.gather(*(_check(host) for host in targets))
-        return ManualDiscoveryResult(len(targets), len(targets), "completed")
+            discovered = await asyncio.gather(*(_check(host) for host in targets))
+        protocols = tuple(sorted(set().union(*discovered)))
+        return ManualDiscoveryResult(
+            len(targets),
+            len(targets),
+            "responded" if protocols else "no_response",
+            protocols,
+        )
