@@ -26,6 +26,7 @@ class SnmpDiscoveryAdapter:
         self, host: Mapping[str, Any]
     ) -> DiscoveryEvidence | None:
         mac = str(host.get("mac") or "").upper()
+        self.results.pop(mac, None)
         settings = self._devices.get(mac)
         if not settings:
             return None
