@@ -89,10 +89,10 @@ async def async_read_fdb(engine: Any, user: Any, target: Any) -> dict[str, Any]:
         return await asyncio.wait_for(_read(), timeout=READ_TIMEOUT)
 
     try:
-        ports = await _walk(FDB_PORT)
-        statuses = await _walk(FDB_STATUS)
-        bridge = await _walk(BRIDGE_PORT_IFINDEX)
-        names = await _walk(IF_NAME)
+        ports, statuses, bridge, names = await asyncio.gather(
+            _walk(FDB_PORT), _walk(FDB_STATUS),
+            _walk(BRIDGE_PORT_IFINDEX), _walk(IF_NAME),
+        )
         observations = correlate_fdb(ports, statuses, bridge, names)
         return {"status": "ok", "entries": observations, "count": len(observations),
                 "truncated": len(ports) >= MAX_ROWS or len(observations) >= MAX_RESULTS}
