@@ -44,7 +44,7 @@
           "online": "Online",
           "offline": "Offline",
           "unbekannt": "Unbekannt",
-          "nicht gefunden": "Nicht gefunden"
+          "nicht_gefunden": "Nicht gefunden"
         }
       },
       "manual_discovery_result": {
