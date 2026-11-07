@@ -9,6 +9,7 @@ from typing import Any
 
 from . import DiscoveryEvidence
 from .lldp import async_read_lldp
+from .fdb import async_read_fdb
 
 SYS_DESCR = "1.3.6.1.2.1.1.1.0"
 SYS_OBJECT_ID = "1.3.6.1.2.1.1.2.0"
@@ -72,7 +73,10 @@ class SnmpDiscoveryAdapter:
                 values = {str(oid): str(value) for oid, value in var_binds}
                 if not values:
                     return None
-                neighbors = await async_read_lldp(engine, user, target)
+                neighbors, fdb = await asyncio.gather(
+                    async_read_lldp(engine, user, target),
+                    async_read_fdb(engine, user, target),
+                )
             finally:
                 engine.close_dispatcher()
             self.results[mac] = {
@@ -81,6 +85,10 @@ class SnmpDiscoveryAdapter:
                 "sys_name": values.get(SYS_NAME, ""),
                 "lldp_neighbor_count": str(len(neighbors)),
                 "lldp_neighbors": json.dumps(neighbors, ensure_ascii=False),
+                "fdb_status": fdb["status"],
+                "fdb_entry_count": str(fdb["count"]),
+                "fdb_truncated": str(fdb["truncated"]).lower(),
+                "fdb_entries": json.dumps(fdb["entries"], ensure_ascii=False),
             }
             return DiscoveryEvidence(source="snmp_v3", protocol="snmp")
         except Exception:
