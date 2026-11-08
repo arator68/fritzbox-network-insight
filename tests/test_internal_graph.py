@@ -92,7 +92,7 @@ class InternalGraphTests(unittest.TestCase):
         self.assertEqual(lan[0]["evidence"], "lldp")
         self.assertEqual(graph["mesh_lan_observation_count"], 1)
         self.assertEqual(graph["mesh_lan_observations"][0]["target_mac"], OTHER)
-        self.assertEqual(graph["model_version"], 4)
+        self.assertEqual(graph["model_version"], 5)
 
     def test_disconnected_avm_lan_is_not_active_observation(self):
         data = snapshot()
@@ -112,7 +112,7 @@ class InternalGraphTests(unittest.TestCase):
              "vlan_id": "1", "interface_name": "gigabitEthernet 1/0/8"},
         ]
         graph = build_internal_graph(data)
-        self.assertEqual(graph["model_version"], 4)
+        self.assertEqual(graph["model_version"], 5)
         self.assertEqual(graph["fdb_port_group_count"], 1)
         group = graph["fdb_port_groups"][0]
         self.assertEqual(group["reachable_macs"], sorted([CLIENT, OTHER]))
@@ -258,6 +258,45 @@ class InternalGraphTests(unittest.TestCase):
         }]
         analysis = build_internal_graph(data)["fdb_port_groups"][0]["port_analysis"]
         self.assertEqual(analysis["downstream_switch_candidates"], [])
+
+    def test_network_segment_preserves_switch_candidate_and_membership(self):
+        data = snapshot()
+        data["nodes"] = [
+            {"mac": SWITCH, "name": "TL-SG3428", "known_host": True},
+            {"mac": OTHER, "name": "TL-SG1024DE-koch-local", "known_host": True},
+            {"mac": CLIENT, "name": "Server-3", "known_host": True},
+        ]
+        data["reachable_via_port"] = [
+            {"source_mac": SWITCH, "target_mac": OTHER, "bridge_port": "49154",
+             "vlan_id": "1", "interface_name": "gigabitEthernet 1/0/2"},
+            {"source_mac": SWITCH, "target_mac": CLIENT, "bridge_port": "49154",
+             "vlan_id": "1", "interface_name": "gigabitEthernet 1/0/2"},
+        ]
+        graph = build_internal_graph(data)
+        self.assertEqual(graph["model_version"], 5)
+        self.assertEqual(graph["network_segment_count"], 1)
+        segment = graph["network_segments"][0]
+        self.assertEqual(segment["segment_id"], f"{SWITCH}:49154:1")
+        self.assertEqual(segment["evidence"], "fdb_reachability")
+        self.assertFalse(segment["physical_topology_confirmed"])
+        self.assertEqual(segment["lldp_confirmed_neighbors"], [])
+        self.assertEqual(segment["downstream_switch_candidates"][0]["mac"], OTHER)
+        self.assertEqual({d["mac"] for d in segment["reachable_devices"]},
+                         {OTHER, CLIENT})
+        self.assertFalse(any(link["evidence"] == "fdb" for link in graph["links"]))
+
+    def test_network_segments_remain_separate_by_vlan(self):
+        data = snapshot()
+        data["reachable_via_port"] = [
+            {"source_mac": SWITCH, "target_mac": CLIENT, "bridge_port": "2",
+             "vlan_id": "1"},
+            {"source_mac": SWITCH, "target_mac": OTHER, "bridge_port": "2",
+             "vlan_id": "2"},
+        ]
+        graph = build_internal_graph(data)
+        self.assertEqual(graph["network_segment_count"], 2)
+        self.assertEqual({s["vlan_id"] for s in graph["network_segments"]},
+                         {"1", "2"})
 
     def test_unknown_fdb_device_is_not_assumed_direct(self):
         data = snapshot()
