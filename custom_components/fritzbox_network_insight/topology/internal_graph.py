@@ -218,12 +218,27 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
                     if d["connection_class"] == "wlan_reachable_via_port"]
         fdb_only = [d["mac"] for d in devices
                     if d["connection_class"] == "fdb_reachable_only"]
+        # A recognizable device name is an identity hint, not physical
+        # evidence. Keep candidates separate from confirmed LLDP neighbors.
+        # Restrict to known hosts with a switch-like name; unknown MACs and
+        # generic device names must not become invented switches.
+        switch_candidates = [
+            {"mac": d["mac"], "name": d["name"],
+             "evidence": "known_host_name", "direct_link_confirmed": False}
+            for d in devices
+            if d["known_host"]
+            and d["mac"] not in confirmed
+            and d["connection_class"] == "fdb_reachable_only"
+            and any(token in d["name"].lower()
+                    for token in ("switch", "tl-sg", "dgs-", "netgear gs"))
+        ]
         group["port_analysis"] = {
             "classification": (
                 "lldp_confirmed_neighbor" if confirmed
                 else "fdb_reachability_only"
             ),
             "confirmed_neighbor_macs": confirmed,
+            "downstream_switch_candidates": switch_candidates,
             "wlan_reachable_count": len(wireless),
             "fdb_only_count": len(fdb_only),
             "reachable_mac_count": len(devices),
