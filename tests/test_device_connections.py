@@ -1,9 +1,11 @@
 """Tests for evidence-preserving per-device topology resolution."""
 import unittest
 
-from custom_components.fritzbox_network_insight.topology.device_connections import (
-    resolve_device_connections,
-)
+from test_internal_graph import _load_module, PACKAGE
+
+resolve_device_connections = _load_module(
+    f"{PACKAGE}.device_connections", "device_connections.py"
+).resolve_device_connections
 
 
 SWITCH = "D4:D6:DF:0E:1B:54"
