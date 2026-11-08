@@ -292,6 +292,48 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
                 if candidate["mac"] not in {n["mac"] for n in confirmed_manual}
             ]
 
+    # Confirmed downstream switches provide a *branch context* for FDB
+    # observations. They do not prove which downstream switch port or cable
+    # a reachable endpoint uses. WLAN endpoints remain WLAN attachments.
+    downstream_branches: list[dict[str, Any]] = []
+    for group in fdb_port_groups:
+        confirmed_switches = [
+            neighbor for neighbor in group["user_confirmed_neighbors"]
+            if any(token in str(nodes.get(neighbor["mac"], {}).get("name") or "").lower()
+                   for token in ("switch", "tl-sg", "dgs-", "netgear gs"))
+        ]
+        if not confirmed_switches:
+            continue
+        # A branch can be uniquely attributed only when exactly one switch
+        # is confirmed on this reporting port/VLAN.
+        if len(confirmed_switches) != 1:
+            continue
+        switch_mac = confirmed_switches[0]["mac"]
+        observed = [
+            {
+                "mac": device["mac"],
+                "name": device["name"],
+                "ip_address": device["ip_address"],
+                "evidence": "fdb_reachability",
+                "physical_attachment_confirmed": False,
+            }
+            for device in group["devices"]
+            if device["mac"] != switch_mac
+            and device["connection_class"] == "fdb_reachable_only"
+        ]
+        downstream_branches.append({
+            "upstream_switch_mac": group["switch_mac"],
+            "upstream_bridge_port": group["bridge_port"],
+            "vlan_id": group["vlan_id"],
+            "downstream_switch_mac": switch_mac,
+            "downstream_switch_name": str(nodes.get(switch_mac, {}).get("name") or ""),
+            "uplink_evidence": "user_confirmed",
+            "reachable_lan_candidates": observed,
+            "candidate_count": len(observed),
+            "downstream_port_known": False,
+            "candidate_direct_links_confirmed": False,
+        })
+
     # Represent each observed switch/bridge/VLAN port as a segment.
     # Membership is forwarding reachability, not a physical wiring claim.
     # Keep LLDP-proven neighbors distinct from identity-based candidates.
@@ -323,6 +365,8 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "reachability": reachability,
         "fdb_port_groups": fdb_port_groups,
         "network_segments": network_segments,
+        "downstream_branches": downstream_branches,
+        "downstream_branch_count": len(downstream_branches),
         "mesh_lan_observations": mesh_lan_observations,
         "wlan_attachments": attachments,
         "conflicts": conflicts,
@@ -334,5 +378,5 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "network_segment_count": len(network_segments),
         "mesh_lan_observation_count": len(mesh_lan_observations),
         "conflict_count": len(conflicts),
-        "model_version": 6,
+        "model_version": 7,
     }
