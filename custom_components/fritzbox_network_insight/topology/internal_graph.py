@@ -148,6 +148,24 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
                 "candidate_parent_macs": sorted(parents),
             })
 
+    # Resolve LLDP's local port number against the FDB interface label.
+    # On this switch, LLDP uses a numeric port (1/8), whereas FDB exposes
+    # gigabitEthernet 1/0/1 or 1/0/8. The bridge-port ID (49153/49160)
+    # is NOT the LLDP port number and must never be compared directly.
+    # Only use a unique interface match for the same reporting switch.
+    def matches_lldp_interface(details: Mapping[str, Any], name: str) -> bool:
+        port_id = str(details.get("source_port_id") or "").strip()
+        port_number = str(details.get("source_port_number") or "").strip()
+        if port_id and port_id == name:
+            return True
+        if port_number and port_number == name:
+            return True
+        # Match a numeric LLDP port to the terminal physical interface
+        # component, e.g. "8" to "gigabitEthernet 1/0/8".
+        if port_number.isdecimal() and "/" in name:
+            return name.rsplit("/", 1)[-1] == port_number
+        return False
+
     # Enrich learned MACs with existing identities and independent WLAN evidence.
     # Never convert a forwarding-table observation into a direct cable.
     for group in fdb_port_groups:
@@ -157,8 +175,15 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         for link in links:
             if link["evidence"] != "lldp" or link["source_mac"] != source:
                 continue
-            local_port = str(link["details"].get("source_port_number") or "")
-            if local_port and local_port in interface_names:
+            candidate_groups = [
+                candidate for candidate in fdb_port_groups
+                if candidate["switch_mac"] == source
+                and any(
+                    matches_lldp_interface(link["details"], name)
+                    for name in candidate["interface_names"]
+                )
+            ]
+            if len(candidate_groups) == 1 and candidate_groups[0] is group:
                 neighbors.add(link["target_mac"])
         group["lldp_neighbors"] = [
             {"mac": mac, "name": str(nodes.get(mac, {}).get("name") or "")}
