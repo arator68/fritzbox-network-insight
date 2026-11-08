@@ -28,6 +28,7 @@ from .topology.fdb_model import build_fdb_observations
 from .topology.fdb_store import FdbTopologyStore
 from .topology.combined import build_combined_topology
 from .topology.internal_graph import build_internal_graph
+from .topology.manual_store import ManualTopologyStore, sanitize_links
 from .dns import resolve_dns_name
 from .fritzbox_client import (
     FritzBoxAuthenticationError,
@@ -53,6 +54,9 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self.identification_store = IdentificationStore(hass, entry.entry_id)
         self.topology_store = TopologyStore(hass, entry.entry_id)
         self.fdb_topology_store = FdbTopologyStore(hass, entry.entry_id)
+        self.manual_topology_store = ManualTopologyStore(hass, entry.entry_id)
+        self.manual_links: list[dict[str, str]] = []
+        self._manual_links_lock = asyncio.Lock()
         self.fdb_observations: dict[str, list[dict[str, str | None]]] = {}
         self.topology_observations: dict[str, list[dict[str, Any]]] = {}
         self._topology_save_lock = asyncio.Lock()
@@ -92,6 +96,53 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             _LOGGER.exception("Could not load saved FDB topology")
             self.fdb_observations = {}
 
+    async def async_load_manual_links(self) -> None:
+        """Restore explicitly confirmed physical connections."""
+        self.manual_links = await self.manual_topology_store.async_load()
+
+    async def async_set_manual_link(
+        self, source_mac: str, target_mac: str, *,
+        bridge_port: str = "", vlan_id: str = "",
+    ) -> list[dict[str, str]]:
+        """Persist an explicit physical confirmation, atomically per entry."""
+        candidate = sanitize_links([{
+            "source_mac": source_mac, "target_mac": target_mac,
+            "bridge_port": bridge_port, "vlan_id": vlan_id,
+            "confirmation": "user_confirmed",
+        }])
+        if not candidate:
+            raise ValueError("Invalid manual link")
+        link = candidate[0]
+        async with self._manual_links_lock:
+            new_links = [
+                old for old in self.manual_links
+                if frozenset((old["source_mac"], old["target_mac"]))
+                != frozenset((link["source_mac"], link["target_mac"]))
+            ] + [link]
+            if len(new_links) > 128:
+                raise ValueError("Too many manually confirmed links")
+            await self.manual_topology_store.async_save(new_links)
+            self.manual_links = new_links
+        return list(self.manual_links)
+
+    async def async_delete_manual_link(
+        self, source_mac: str, target_mac: str
+    ) -> list[dict[str, str]]:
+        """Remove one confirmation by its stable MAC pair."""
+        from .topology.lldp_matcher import normalize_mac
+        source, target = normalize_mac(source_mac), normalize_mac(target_mac)
+        if not source or not target or source == target:
+            raise ValueError("Invalid MAC pair")
+        async with self._manual_links_lock:
+            new_links = [
+                old for old in self.manual_links
+                if frozenset((old["source_mac"], old["target_mac"]))
+                != frozenset((source, target))
+            ]
+            await self.manual_topology_store.async_save(new_links)
+            self.manual_links = new_links
+        return list(self.manual_links)
+
     def get_fdb_snapshot(self) -> dict[str, Any]:
         """Expose last-observed MAC reachability separately from LLDP links."""
         observations = [
@@ -118,7 +169,9 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
 
     def get_internal_topology_graph(self) -> dict[str, Any]:
         """Build the full internal graph without exposing it as sensor attributes."""
-        return build_internal_graph(self.get_combined_topology_snapshot())
+        snapshot = self.get_combined_topology_snapshot()
+        snapshot["manual_links"] = list(self.manual_links)
+        return build_internal_graph(snapshot)
 
     def get_topology_snapshot(self) -> dict[str, Any]:
         """Provide a single, dashboard-ready topology data model."""
