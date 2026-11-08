@@ -189,6 +189,42 @@ class InternalGraphTests(unittest.TestCase):
         groups = build_internal_graph(data)["fdb_port_groups"]
         self.assertTrue(all(not g["lldp_neighbors"] for g in groups))
 
+    def test_port_analysis_separates_confirmed_lldp_and_wireless(self):
+        data = snapshot()
+        data["reachable_via_port"] = [
+            {"source_mac": SWITCH, "target_mac": ROUTER, "bridge_port": "49153",
+             "vlan_id": "1", "interface_name": "gigabitEthernet 1/0/1"},
+            {"source_mac": SWITCH, "target_mac": CLIENT, "bridge_port": "49153",
+             "vlan_id": "1", "interface_name": "gigabitEthernet 1/0/1"},
+        ]
+        group = build_internal_graph(data)["fdb_port_groups"][0]
+        analysis = group["port_analysis"]
+        self.assertEqual(analysis["classification"], "lldp_confirmed_neighbor")
+        self.assertEqual(analysis["confirmed_neighbor_macs"], [ROUTER])
+        self.assertEqual(analysis["wlan_reachable_count"], 1)
+        self.assertEqual(analysis["fdb_only_count"], 0)
+        self.assertEqual(analysis["reachable_mac_count"], 2)
+        self.assertTrue(analysis["multiple_macs_observed"])
+        self.assertFalse(analysis["downstream_switch_confirmed"])
+
+    def test_port_analysis_does_not_infer_downstream_switch_from_fdb(self):
+        data = snapshot()
+        data["reachable_via_port"] = [
+            {"source_mac": SWITCH, "target_mac": OTHER, "bridge_port": "49154",
+             "vlan_id": "1", "interface_name": "gigabitEthernet 1/0/2"},
+            {"source_mac": SWITCH, "target_mac": ROUTER, "bridge_port": "49154",
+             "vlan_id": "1", "interface_name": "gigabitEthernet 1/0/2"},
+        ]
+        group = build_internal_graph(data)["fdb_port_groups"][0]
+        analysis = group["port_analysis"]
+        self.assertEqual(analysis["classification"], "fdb_reachability_only")
+        self.assertEqual(analysis["confirmed_neighbor_macs"], [])
+        self.assertEqual(analysis["fdb_only_count"], 2)
+        self.assertTrue(analysis["multiple_macs_observed"])
+        self.assertFalse(analysis["downstream_switch_confirmed"])
+        self.assertFalse(analysis["direct_device_without_lldp_confirmed"])
+        self.assertFalse(group["direct_connection_inferred"])
+
     def test_unknown_fdb_device_is_not_assumed_direct(self):
         data = snapshot()
         data["reachable_via_port"] = [{
