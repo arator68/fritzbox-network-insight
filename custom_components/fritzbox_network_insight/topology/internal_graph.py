@@ -211,6 +211,27 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             })
         group["devices"] = devices
 
+        # Port-level evidence summary. Multiple learned MAC addresses mean
+        # reachability through this port, NOT proof of a downstream switch.
+        confirmed = [d["mac"] for d in devices if d["lldp_direct_neighbor"]]
+        wireless = [d["mac"] for d in devices
+                    if d["connection_class"] == "wlan_reachable_via_port"]
+        fdb_only = [d["mac"] for d in devices
+                    if d["connection_class"] == "fdb_reachable_only"]
+        group["port_analysis"] = {
+            "classification": (
+                "lldp_confirmed_neighbor" if confirmed
+                else "fdb_reachability_only"
+            ),
+            "confirmed_neighbor_macs": confirmed,
+            "wlan_reachable_count": len(wireless),
+            "fdb_only_count": len(fdb_only),
+            "reachable_mac_count": len(devices),
+            "multiple_macs_observed": len(devices) > 1,
+            "downstream_switch_confirmed": False,
+            "direct_device_without_lldp_confirmed": False,
+        }
+
     return {
         "nodes": nodes,
         "links": links,
