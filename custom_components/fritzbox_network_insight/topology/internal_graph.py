@@ -108,6 +108,31 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         if source and target and source != target:
             reachability.append(dict(item))
 
+    # FDB is forwarding reachability per switch/bridge port, not a cable.
+    groups: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for observation in reachability:
+        switch = normalize_mac(observation.get("source_mac"))
+        target = normalize_mac(observation.get("target_mac"))
+        port = str(observation.get("bridge_port") or "")
+        vlan = str(observation.get("vlan_id") or "")
+        if not switch or not target or not port:
+            continue
+        key = (switch, port, vlan)
+        group = groups.setdefault(key, {
+            "switch_mac": switch, "bridge_port": port, "vlan_id": vlan,
+            "interface_names": set(), "reachable_macs": set(),
+        })
+        group["reachable_macs"].add(target)
+        if observation.get("interface_name"):
+            group["interface_names"].add(str(observation["interface_name"]))
+    fdb_port_groups = [
+        {"switch_mac": g["switch_mac"], "bridge_port": g["bridge_port"],
+         "vlan_id": g["vlan_id"], "interface_names": sorted(g["interface_names"]),
+         "reachable_macs": sorted(g["reachable_macs"]),
+         "direct_connection_inferred": False}
+        for _, g in sorted(groups.items())
+    ]
+
     attachments: dict[str, dict[str, Any]] = {}
     for client, parents in sorted(wireless_attachments.items()):
         if len(parents) == 1:
@@ -127,6 +152,7 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "nodes": nodes,
         "links": links,
         "reachability": reachability,
+        "fdb_port_groups": fdb_port_groups,
         "mesh_lan_observations": mesh_lan_observations,
         "wlan_attachments": attachments,
         "conflicts": conflicts,
@@ -134,7 +160,8 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "link_count": len(links),
         "wlan_attachment_count": len(attachments),
         "reachability_count": len(reachability),
+        "fdb_port_group_count": len(fdb_port_groups),
         "mesh_lan_observation_count": len(mesh_lan_observations),
         "conflict_count": len(conflicts),
-        "model_version": 2,
+        "model_version": 3,
     }
