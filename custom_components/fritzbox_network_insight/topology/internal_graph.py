@@ -384,6 +384,50 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             "member_count": branch["candidate_count"],
         })
 
+    # Uniform, evidence-preserving LAN inventory for every observed port.
+    # These are port observations, not automatically inferred cables.
+    lan_port_memberships: list[dict[str, Any]] = []
+    for group in fdb_port_groups:
+        lldp_macs = {neighbor["mac"] for neighbor in group["lldp_neighbors"]}
+        manual_macs = {neighbor["mac"] for neighbor in group["user_confirmed_neighbors"]}
+        members: list[dict[str, Any]] = []
+        for device in group["devices"]:
+            mac = device["mac"]
+            if mac in lldp_macs:
+                relation, evidence, confirmed = "confirmed_neighbor", "lldp", True
+            elif mac in manual_macs:
+                relation, evidence, confirmed = "confirmed_neighbor", "user_confirmed", True
+            elif device["connection_class"] == "wlan_reachable_via_port":
+                relation, evidence, confirmed = "wlan_transit", "avm_mesh", False
+            else:
+                relation, evidence, confirmed = "reachable_via_port", "fdb_reachability", False
+            members.append({
+                "mac": mac,
+                "name": device["name"],
+                "ip_address": device["ip_address"],
+                "relationship": relation,
+                "evidence": evidence,
+                "physical_link_confirmed": confirmed,
+                "wlan_parent_mac": device["wlan_parent_mac"],
+            })
+        lan_port_memberships.append({
+            "switch_mac": group["switch_mac"],
+            "bridge_port": group["bridge_port"],
+            "vlan_id": group["vlan_id"],
+            "interface_names": list(group["interface_names"]),
+            "members": members,
+            "member_count": len(members),
+            "confirmed_neighbor_count": sum(
+                m["physical_link_confirmed"] for m in members
+            ),
+            "wlan_transit_count": sum(
+                m["relationship"] == "wlan_transit" for m in members
+            ),
+            "fdb_only_count": sum(
+                m["relationship"] == "reachable_via_port" for m in members
+            ),
+        })
+
     # Represent each observed switch/bridge/VLAN port as a segment.
     # Membership is forwarding reachability, not a physical wiring claim.
     # Keep LLDP-proven neighbors distinct from identity-based candidates.
@@ -418,6 +462,8 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "downstream_branches": downstream_branches,
         "graph_branches": graph_branches,
         "graph_branch_count": len(graph_branches),
+        "lan_port_memberships": lan_port_memberships,
+        "lan_port_membership_count": len(lan_port_memberships),
         "downstream_branch_count": len(downstream_branches),
         "mesh_lan_observations": mesh_lan_observations,
         "wlan_attachments": attachments,
@@ -430,5 +476,5 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "network_segment_count": len(network_segments),
         "mesh_lan_observation_count": len(mesh_lan_observations),
         "conflict_count": len(conflicts),
-        "model_version": 8,
+        "model_version": 9,
     }
