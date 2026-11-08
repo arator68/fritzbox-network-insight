@@ -1,0 +1,13 @@
+topology_diagnostics:
+  name: Internal topology diagnostics
+  description: >-
+    Return the complete internally calculated network topology for diagnosis.
+    Read-only; does not create entities or modify network configuration.
+  fields:
+    entry_id:
+      name: Configuration entry ID
+      description: Optional ID of the FRITZ!Box Network Insight configuration entry.
+      required: false
+      example: "0123456789abcdef0123456789abcdef"
+      selector:
+        text:
