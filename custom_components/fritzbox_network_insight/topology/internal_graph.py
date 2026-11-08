@@ -9,6 +9,7 @@ from collections import defaultdict
 from typing import Any, Mapping
 
 from .lldp_matcher import normalize_mac
+from .device_connections import resolve_device_connections
 
 
 def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
@@ -518,7 +519,7 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             "reachable_mac_count": analysis["reachable_mac_count"],
         })
 
-    return {
+    graph = {
         "nodes": nodes,
         "links": links,
         "reachability": reachability,
@@ -545,5 +546,8 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "network_segment_count": len(network_segments),
         "mesh_lan_observation_count": len(mesh_lan_observations),
         "conflict_count": len(conflicts),
-        "model_version": 11,
+        "model_version": 12,
     }
+    graph["device_connections"] = resolve_device_connections(graph)
+    graph["device_connection_count"] = len(graph["device_connections"])
+    return graph
