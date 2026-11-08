@@ -103,6 +103,31 @@ class InternalGraphTests(unittest.TestCase):
         graph = build_internal_graph(data)
         self.assertEqual(graph["mesh_lan_observation_count"], 0)
 
+    def test_fdb_grouped_by_port_without_cable_inference(self):
+        data = snapshot()
+        data["reachable_via_port"] = [
+            {"source_mac": SWITCH, "target_mac": CLIENT, "bridge_port": "8",
+             "vlan_id": "1", "interface_name": "gigabitEthernet 1/0/8"},
+            {"source_mac": SWITCH, "target_mac": OTHER, "bridge_port": "8",
+             "vlan_id": "1", "interface_name": "gigabitEthernet 1/0/8"},
+        ]
+        graph = build_internal_graph(data)
+        self.assertEqual(graph["model_version"], 3)
+        self.assertEqual(graph["fdb_port_group_count"], 1)
+        group = graph["fdb_port_groups"][0]
+        self.assertEqual(group["reachable_macs"], sorted([CLIENT, OTHER]))
+        self.assertFalse(group["direct_connection_inferred"])
+        self.assertEqual(len([x for x in graph["links"] if x["medium"] == "lan"]), 1)
+
+    def test_fdb_separates_switches_and_vlans(self):
+        data = snapshot()
+        data["reachable_via_port"] = [
+            {"source_mac": SWITCH, "target_mac": CLIENT, "bridge_port": "2", "vlan_id": "1"},
+            {"source_mac": SWITCH, "target_mac": OTHER, "bridge_port": "2", "vlan_id": "2"},
+            {"source_mac": ROUTER, "target_mac": CLIENT, "bridge_port": "2", "vlan_id": "1"},
+        ]
+        self.assertEqual(build_internal_graph(data)["fdb_port_group_count"], 3)
+
     def test_repeater_client_attachment(self):
         graph = build_internal_graph(snapshot())
         self.assertEqual(graph["wlan_attachments"][CLIENT]["parent_mac"], REPEATER)
