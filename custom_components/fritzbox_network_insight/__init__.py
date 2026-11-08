@@ -5,7 +5,7 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME, Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 
 from .const import DOMAIN
@@ -48,6 +48,51 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ) from err
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+
+    if not hass.services.has_service(DOMAIN, "topology_diagnostics"):
+        async def async_topology_diagnostics(call):
+            """Return read-only diagnostics from the complete internal graph."""
+            domain_data = hass.data.get(DOMAIN, {})
+            requested = call.data.get("entry_id")
+            selected = (
+                domain_data.get(requested)
+                if requested
+                else next(iter(domain_data.values()), None)
+            )
+            if selected is None:
+                return {"error": "No matching FRITZ!Box Network Insight entry"}
+            graph = selected.get_internal_topology_graph()
+            return {
+                "model_version": graph["model_version"],
+                "node_count": graph["node_count"],
+                "link_count": graph["link_count"],
+                "reachability_count": graph["reachability_count"],
+                "wlan_attachment_count": graph["wlan_attachment_count"],
+                "conflict_count": graph["conflict_count"],
+                "links": [
+                    {
+                        "source_mac": link["source_mac"],
+                        "target_mac": link["target_mac"],
+                        "medium": link["medium"],
+                        "evidence": link["evidence"],
+                        "state": link["state"],
+                        "source_port": link["details"].get("source_port_id")
+                            or link["details"].get("source_interface"),
+                        "target_port": link["details"].get("target_port_id")
+                            or link["details"].get("target_interface"),
+                        "corroborated_by_avm": bool(link.get("corroboration")),
+                    }
+                    for link in graph["links"]
+                ],
+                "wlan_attachments": graph["wlan_attachments"],
+                "conflicts": graph["conflicts"],
+                "note": "FDB is reachability evidence, not proof of a direct cable.",
+            }
+
+        hass.services.async_register(
+            DOMAIN, "topology_diagnostics", async_topology_diagnostics,
+            supports_response=SupportsResponse.ONLY,
+        )
     _LOGGER.info(
         "FRITZ!Box Network Insight initialized for %s with %d device(s)",
         entry.data[CONF_HOST],
@@ -67,6 +112,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             domain_data.pop(entry.entry_id, None)
             if not domain_data:
                 hass.data.pop(DOMAIN, None)
+                hass.services.async_remove(DOMAIN, "topology_diagnostics")
     return unload_ok
 
 
