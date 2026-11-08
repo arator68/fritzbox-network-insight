@@ -79,6 +79,30 @@ class InternalGraphTests(unittest.TestCase):
         self.assertEqual(lan[0]["evidence"], "lldp")
         self.assertEqual(len(lan[0]["corroboration"]), 1)
 
+    def test_avm_only_lan_is_not_a_physical_link(self):
+        data = snapshot()
+        data["mesh_links"].append({
+            "source_mac": ROUTER, "target_mac": OTHER,
+            "link_type": "LAN", "link_state": "CONNECTED",
+            "source_port_id": "LAN:1",
+        })
+        graph = build_internal_graph(data)
+        lan = [link for link in graph["links"] if link["medium"] == "lan"]
+        self.assertEqual(len(lan), 1)
+        self.assertEqual(lan[0]["evidence"], "lldp")
+        self.assertEqual(graph["mesh_lan_observation_count"], 1)
+        self.assertEqual(graph["mesh_lan_observations"][0]["target_mac"], OTHER)
+        self.assertEqual(graph["model_version"], 2)
+
+    def test_disconnected_avm_lan_is_not_active_observation(self):
+        data = snapshot()
+        data["mesh_links"].append({
+            "source_mac": ROUTER, "target_mac": OTHER,
+            "link_type": "LAN", "link_state": "DISCONNECTED",
+        })
+        graph = build_internal_graph(data)
+        self.assertEqual(graph["mesh_lan_observation_count"], 0)
+
     def test_repeater_client_attachment(self):
         graph = build_internal_graph(snapshot())
         self.assertEqual(graph["wlan_attachments"][CLIENT]["parent_mac"], REPEATER)
