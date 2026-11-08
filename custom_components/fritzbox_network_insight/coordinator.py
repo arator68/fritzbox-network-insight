@@ -29,6 +29,7 @@ from .topology.fdb_store import FdbTopologyStore
 from .topology.combined import build_combined_topology
 from .topology.internal_graph import build_internal_graph
 from .topology.manual_store import ManualTopologyStore, sanitize_links
+from .topology.port_history import PortHistoryStore, merge_port_history
 from .dns import resolve_dns_name
 from .fritzbox_client import (
     FritzBoxAuthenticationError,
@@ -55,6 +56,8 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self.topology_store = TopologyStore(hass, entry.entry_id)
         self.fdb_topology_store = FdbTopologyStore(hass, entry.entry_id)
         self.manual_topology_store = ManualTopologyStore(hass, entry.entry_id)
+        self.port_history_store = PortHistoryStore(hass, entry.entry_id)
+        self.port_history: list[dict[str, str]] = []
         self.manual_links: list[dict[str, str]] = []
         self._manual_links_lock = asyncio.Lock()
         self.fdb_observations: dict[str, list[dict[str, str | None]]] = {}
@@ -95,6 +98,14 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         except Exception:
             _LOGGER.exception("Could not load saved FDB topology")
             self.fdb_observations = {}
+
+    async def async_load_port_history(self) -> None:
+        """Restore last-seen port records without claiming devices are online."""
+        try:
+            self.port_history = await self.port_history_store.async_load()
+        except Exception:
+            _LOGGER.exception("Could not load saved port history")
+            self.port_history = []
 
     async def async_load_manual_links(self) -> None:
         """Restore explicitly confirmed physical connections."""
@@ -171,6 +182,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         """Build the full internal graph without exposing it as sensor attributes."""
         snapshot = self.get_combined_topology_snapshot()
         snapshot["manual_links"] = list(self.manual_links)
+        snapshot["port_history"] = list(self.port_history)
         return build_internal_graph(snapshot)
 
     def get_topology_snapshot(self) -> dict[str, Any]:
@@ -282,6 +294,18 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             "last_run": datetime.now(timezone.utc).isoformat(),
         }
         self.async_update_listeners()
+        if fdb_changed:
+            async with self._topology_save_lock:
+                try:
+                    # A complete SNMP FDB walk is evidence of observation,
+                    # not proof of a direct cable or current online status.
+                    updated = merge_port_history(
+                        self.port_history, self.fdb_observations.get(mac, [])
+                    )
+                    await self.port_history_store.async_save(updated)
+                    self.port_history = updated
+                except Exception:
+                    _LOGGER.exception("Could not persist port history")
         if fdb_changed:
             async with self._topology_save_lock:
                 try:
