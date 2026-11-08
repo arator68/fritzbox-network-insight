@@ -148,6 +148,44 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
                 "candidate_parent_macs": sorted(parents),
             })
 
+    # Enrich learned MACs with existing identities and independent WLAN evidence.
+    # Never convert a forwarding-table observation into a direct cable.
+    for group in fdb_port_groups:
+        source = group["switch_mac"]
+        interface_names = set(group["interface_names"])
+        neighbors = set()
+        for link in links:
+            if link["evidence"] != "lldp" or link["source_mac"] != source:
+                continue
+            local_port = str(link["details"].get("source_port_number") or "")
+            if local_port and local_port in interface_names:
+                neighbors.add(link["target_mac"])
+        group["lldp_neighbors"] = [
+            {"mac": mac, "name": str(nodes.get(mac, {}).get("name") or "")}
+            for mac in sorted(neighbors)
+        ]
+        devices = []
+        for mac in group["reachable_macs"]:
+            node = nodes.get(mac, {})
+            wireless = attachments.get(mac)
+            devices.append({
+                "mac": mac,
+                "name": str(node.get("name") or ""),
+                "ip_address": str(node.get("ip_address") or ""),
+                "device_type": node.get("device_type"),
+                "known_host": bool(node.get("known_host")),
+                "wlan_parent_mac": wireless["parent_mac"] if wireless else None,
+                "wlan_parent_name": str(nodes.get(wireless["parent_mac"], {}).get("name") or "") if wireless else "",
+                "wlan_evidence": wireless["evidence"] if wireless else None,
+                "lldp_direct_neighbor": mac in neighbors,
+                "connection_class": (
+                    "lldp_confirmed_lan" if mac in neighbors
+                    else "wlan_reachable_via_port" if wireless
+                    else "fdb_reachable_only"
+                ),
+            })
+        group["devices"] = devices
+
     return {
         "nodes": nodes,
         "links": links,
@@ -163,5 +201,5 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "fdb_port_group_count": len(fdb_port_groups),
         "mesh_lan_observation_count": len(mesh_lan_observations),
         "conflict_count": len(conflicts),
-        "model_version": 3,
+        "model_version": 4,
     }
