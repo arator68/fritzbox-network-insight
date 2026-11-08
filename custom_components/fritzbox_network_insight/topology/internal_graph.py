@@ -428,6 +428,33 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             ),
         })
 
+    # Suggest only unambiguous, single-MAC, non-WLAN FDB observations for
+    # operator verification. A suggestion never creates a physical link.
+    physical_link_candidates: list[dict[str, Any]] = []
+    for group in fdb_port_groups:
+        if len(group["devices"]) != 1:
+            continue
+        device = group["devices"][0]
+        if device["connection_class"] != "fdb_reachable_only":
+            continue
+        if group["lldp_neighbors"] or group["user_confirmed_neighbors"]:
+            continue
+        if not device["known_host"]:
+            continue
+        physical_link_candidates.append({
+            "source_mac": group["switch_mac"],
+            "target_mac": device["mac"],
+            "target_name": device["name"],
+            "target_ip_address": device["ip_address"],
+            "bridge_port": group["bridge_port"],
+            "vlan_id": group["vlan_id"],
+            "interface_names": list(group["interface_names"]),
+            "evidence": "fdb_reachability",
+            "status": "requires_user_confirmation",
+            "physical_link_confirmed": False,
+            "reason": "single_known_lan_mac_on_port",
+        })
+
     # Represent each observed switch/bridge/VLAN port as a segment.
     # Membership is forwarding reachability, not a physical wiring claim.
     # Keep LLDP-proven neighbors distinct from identity-based candidates.
@@ -464,6 +491,8 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "graph_branch_count": len(graph_branches),
         "lan_port_memberships": lan_port_memberships,
         "lan_port_membership_count": len(lan_port_memberships),
+        "physical_link_candidates": physical_link_candidates,
+        "physical_link_candidate_count": len(physical_link_candidates),
         "downstream_branch_count": len(downstream_branches),
         "mesh_lan_observations": mesh_lan_observations,
         "wlan_attachments": attachments,
@@ -476,5 +505,5 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "network_segment_count": len(network_segments),
         "mesh_lan_observation_count": len(mesh_lan_observations),
         "conflict_count": len(conflicts),
-        "model_version": 9,
+        "model_version": 10,
     }
