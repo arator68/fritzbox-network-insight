@@ -30,6 +30,10 @@ def resolve_device_connections(graph: Mapping[str, Any]) -> list[dict[str, Any]]
                 "physical_link_confirmed": False,
                 "last_seen": None,
                 "status": "unknown",
+                "transit_neighbor_mac": None,
+                "transit_evidence": None,
+                "port_relationship": None,
+                "wlan_parent_connection": None,
             }
         return result[mac]
 
@@ -50,6 +54,16 @@ def resolve_device_connections(graph: Mapping[str, Any]) -> list[dict[str, Any]]
             "status": "historical",
         })
 
+    # Confirmed neighbor on a port can identify the downstream transit path,
+    # but cannot establish a direct cable to other MACs learned there.
+    confirmed_by_port = {}
+    for group in graph.get("lan_port_memberships", []):
+        key = (group.get("switch_mac"), group.get("bridge_port"), group.get("vlan_id"))
+        confirmed_by_port[key] = {
+            member["mac"] for member in group.get("members", [])
+            if member.get("physical_link_confirmed") and member.get("mac")
+        }
+
     # Current FDB reachability supersedes history, but is not a cable.
     for group in graph.get("lan_port_memberships", []):
         for member in group.get("members", []):
@@ -57,6 +71,9 @@ def resolve_device_connections(graph: Mapping[str, Any]) -> list[dict[str, Any]]
             if not mac:
                 continue
             entry = record(mac)
+            key = (group.get("switch_mac"), group.get("bridge_port"), group.get("vlan_id"))
+            neighbors = confirmed_by_port.get(key, set()) - {mac}
+            transit = next(iter(neighbors)) if len(neighbors) == 1 else None
             entry.update({
                 "connection_type": "reachable_via_port",
                 "switch_mac": group.get("switch_mac"),
@@ -65,6 +82,9 @@ def resolve_device_connections(graph: Mapping[str, Any]) -> list[dict[str, Any]]
                 "interface_name": (group.get("interface_names") or [None])[0],
                 "evidence": "fdb_reachability",
                 "status": "observed_in_saved_fdb",
+                "port_relationship": member.get("relationship"),
+                "transit_neighbor_mac": transit,
+                "transit_evidence": "confirmed_port_neighbor" if transit else None,
             })
 
     # A WLAN parent is more specific than the wired path carrying its traffic.
@@ -75,6 +95,7 @@ def resolve_device_connections(graph: Mapping[str, Any]) -> list[dict[str, Any]]
             "parent_mac": attachment.get("parent_mac"),
             "evidence": "avm_mesh",
             "status": "mesh_observed",
+            "wlan_parent_connection": "unverified",
         })
 
     # Only LLDP and explicit user confirmation can assert a direct cable.
@@ -96,4 +117,14 @@ def resolve_device_connections(graph: Mapping[str, Any]) -> list[dict[str, Any]]
             "physical_link_confirmed": True,
             "status": "confirmed",
         })
+    # A repeater learned via FDB may use Ethernet or wireless backhaul.
+    # Preserve that uncertainty rather than inventing a cable.
+    for entry in result.values():
+        if entry["connection_type"] != "wlan":
+            continue
+        parent = result.get(entry["parent_mac"])
+        if parent and parent["connection_type"] == "confirmed_lan":
+            entry["wlan_parent_connection"] = "confirmed_lan"
+        elif parent and parent["connection_type"] == "reachable_via_port":
+            entry["wlan_parent_connection"] = "fdb_reachable_only"
     return [result[mac] for mac in sorted(result)]
