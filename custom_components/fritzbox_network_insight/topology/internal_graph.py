@@ -58,6 +58,24 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         add_link(source, target, medium="lan", evidence="lldp",
                  state=None, details=item)
 
+    # Explicit operator-confirmed physical links are a separate evidence
+    # channel. They never masquerade as LLDP observations.
+    for item in snapshot.get("manual_links", []):
+        if not isinstance(item, dict):
+            continue
+        source = normalize_mac(item.get("source_mac"))
+        target = normalize_mac(item.get("target_mac"))
+        if not source or not target or source == target:
+            continue
+        if frozenset((source, target)) in confirmed_pairs:
+            # LLDP is already stronger evidence for this physical pair.
+            continue
+        if item.get("confirmation") != "user_confirmed":
+            continue
+        confirmed_pairs.add(frozenset((source, target)))
+        add_link(source, target, medium="lan", evidence="user_confirmed",
+                 state=None, details=item)
+
     for item in snapshot.get("mesh_links", []):
         if not isinstance(item, dict):
             continue
@@ -247,6 +265,27 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             "direct_device_without_lldp_confirmed": False,
         }
 
+    # Attach user-confirmed physical neighbors to matching FDB segments
+    # without turning the remaining FDB members into direct links.
+    for group in fdb_port_groups:
+        source = group["switch_mac"]
+        confirmed_manual = [
+            {"mac": link["target_mac"], "evidence": "user_confirmed"}
+            for link in links
+            if link["evidence"] == "user_confirmed"
+            and link["source_mac"] == source
+            and link["target_mac"] in group["reachable_macs"]
+            and (
+                not link["details"].get("bridge_port")
+                or str(link["details"]["bridge_port"]) == group["bridge_port"]
+            )
+            and (
+                not link["details"].get("vlan_id")
+                or str(link["details"]["vlan_id"]) == group["vlan_id"]
+            )
+        ]
+        group["user_confirmed_neighbors"] = confirmed_manual
+
     # Represent each observed switch/bridge/VLAN port as a segment.
     # Membership is forwarding reachability, not a physical wiring claim.
     # Keep LLDP-proven neighbors distinct from identity-based candidates.
@@ -264,6 +303,7 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             "evidence": "fdb_reachability",
             "physical_topology_confirmed": False,
             "lldp_confirmed_neighbors": list(group["lldp_neighbors"]),
+            "user_confirmed_neighbors": list(group["user_confirmed_neighbors"]),
             "downstream_switch_candidates": list(
                 analysis["downstream_switch_candidates"]
             ),
@@ -288,5 +328,5 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "network_segment_count": len(network_segments),
         "mesh_lan_observation_count": len(mesh_lan_observations),
         "conflict_count": len(conflicts),
-        "model_version": 5,
+        "model_version": 6,
     }
