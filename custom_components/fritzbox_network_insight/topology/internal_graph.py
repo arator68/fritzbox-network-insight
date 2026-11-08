@@ -321,6 +321,7 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             {"mac": link["target_mac"], "evidence": "user_confirmed"}
             for link in links
             if link["evidence"] == "user_confirmed"
+            and link.get("state") != "needs_review"
             and link["source_mac"] == source
             and link["target_mac"] in group["reachable_macs"]
             and (
@@ -394,6 +395,7 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             and frozenset((link["source_mac"], link["target_mac"]))
                 == frozenset((upstream, downstream))
             and link["evidence"] in ("lldp", "user_confirmed")
+            and link.get("state") != "needs_review"
         ]
         if len(matching_links) != 1:
             # A branch without one unambiguous physical uplink stays out
@@ -521,6 +523,7 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             if link["medium"] == "lan"
             and link["evidence"] in ("lldp", "user_confirmed")
             and frozenset((link["source_mac"], link["target_mac"])) == pair
+            and link.get("state") != "needs_review"
         ]
         port_history.append({
             "source_mac": source,
