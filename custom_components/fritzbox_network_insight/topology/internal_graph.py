@@ -334,6 +334,56 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             "candidate_direct_links_confirmed": False,
         })
 
+    # Structured graph view: a confirmed cable to the downstream switch and
+    # a separate set of FDB-only branch members. Membership is deliberately
+    # NOT an edge in 'links' and does not assert a downstream cable.
+    graph_branches: list[dict[str, Any]] = []
+    for branch in downstream_branches:
+        upstream = branch["upstream_switch_mac"]
+        downstream = branch["downstream_switch_mac"]
+        matching_links = [
+            link for link in links
+            if link["medium"] == "lan"
+            and frozenset((link["source_mac"], link["target_mac"]))
+                == frozenset((upstream, downstream))
+            and link["evidence"] in ("lldp", "user_confirmed")
+        ]
+        if len(matching_links) != 1:
+            # A branch without one unambiguous physical uplink stays out
+            # of the structured physical graph.
+            continue
+        graph_branches.append({
+            "branch_id": (
+                f'{upstream}:{branch["upstream_bridge_port"]}:'
+                f'{branch["vlan_id"]}:{downstream}'
+            ),
+            "parent_mac": upstream,
+            "switch_mac": downstream,
+            "switch_name": branch["downstream_switch_name"],
+            "uplink": {
+                "source_mac": upstream,
+                "target_mac": downstream,
+                "medium": "lan",
+                "evidence": matching_links[0]["evidence"],
+                "bridge_port": branch["upstream_bridge_port"],
+                "vlan_id": branch["vlan_id"],
+                "physical_link_confirmed": True,
+            },
+            "members": [
+                {
+                    "mac": device["mac"],
+                    "name": device["name"],
+                    "ip_address": device["ip_address"],
+                    "relationship": "reachable_in_branch",
+                    "evidence": "fdb_reachability",
+                    "physical_link_confirmed": False,
+                    "downstream_port_known": False,
+                }
+                for device in branch["reachable_lan_candidates"]
+            ],
+            "member_count": branch["candidate_count"],
+        })
+
     # Represent each observed switch/bridge/VLAN port as a segment.
     # Membership is forwarding reachability, not a physical wiring claim.
     # Keep LLDP-proven neighbors distinct from identity-based candidates.
@@ -366,6 +416,8 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "fdb_port_groups": fdb_port_groups,
         "network_segments": network_segments,
         "downstream_branches": downstream_branches,
+        "graph_branches": graph_branches,
+        "graph_branch_count": len(graph_branches),
         "downstream_branch_count": len(downstream_branches),
         "mesh_lan_observations": mesh_lan_observations,
         "wlan_attachments": attachments,
@@ -378,5 +430,5 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "network_segment_count": len(network_segments),
         "mesh_lan_observation_count": len(mesh_lan_observations),
         "conflict_count": len(conflicts),
-        "model_version": 7,
+        "model_version": 8,
     }
