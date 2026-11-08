@@ -67,6 +67,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 "node_count": graph["node_count"],
                 "link_count": graph["link_count"],
                 "reachability_count": graph["reachability_count"],
+                "fdb_port_group_count": graph["fdb_port_group_count"],
+                "fdb_port_groups": graph["fdb_port_groups"],
                 "mesh_lan_observation_count": graph["mesh_lan_observation_count"],
                 "mesh_lan_observations": graph["mesh_lan_observations"],
                 "wlan_attachment_count": graph["wlan_attachment_count"],
