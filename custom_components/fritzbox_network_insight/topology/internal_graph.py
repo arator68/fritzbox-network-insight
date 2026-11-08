@@ -21,6 +21,7 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     }
     links: list[dict[str, Any]] = []
     reachability: list[dict[str, Any]] = []
+    mesh_lan_observations: list[dict[str, Any]] = []
     conflicts: list[dict[str, Any]] = []
     seen: set[tuple[Any, ...]] = set()
     confirmed_pairs: set[frozenset[str]] = set()
@@ -81,6 +82,11 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
                 )) == frozenset((source, target)):
                     link.setdefault("corroboration", []).append(dict(item))
             continue
+        if medium == "lan":
+            # AVM reports logical LAN reachability through downstream switches.
+            # Without LLDP this is NOT a confirmed direct physical cable.
+            mesh_lan_observations.append(dict(item))
+            continue
         add_link(source, target, medium=medium, evidence="avm_mesh",
                  state=state or None, details=item)
         if medium == "wlan":
@@ -121,12 +127,14 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "nodes": nodes,
         "links": links,
         "reachability": reachability,
+        "mesh_lan_observations": mesh_lan_observations,
         "wlan_attachments": attachments,
         "conflicts": conflicts,
         "node_count": len(nodes),
         "link_count": len(links),
         "wlan_attachment_count": len(attachments),
         "reachability_count": len(reachability),
+        "mesh_lan_observation_count": len(mesh_lan_observations),
         "conflict_count": len(conflicts),
-        "model_version": 1,
+        "model_version": 2,
     }
