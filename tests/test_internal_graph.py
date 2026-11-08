@@ -626,5 +626,85 @@ class InternalGraphTests(unittest.TestCase):
         self.assertEqual(graph["node_count"], 5)
 
 
+    def test_manual_link_port_conflict_is_reported_without_deletion(self):
+        data = snapshot()
+        data["direct_links"] = []
+        data["mesh_links"] = []
+        data["manual_links"] = [{
+            "source_mac": SWITCH, "target_mac": OTHER,
+            "bridge_port": "49154", "vlan_id": "1",
+            "confirmation": "user_confirmed",
+        }]
+        data["reachable_via_port"] = [{
+            "source_mac": SWITCH, "target_mac": OTHER,
+            "bridge_port": "49165", "vlan_id": "1",
+            "interface_name": "gigabitEthernet 1/0/13",
+        }]
+        graph = build_internal_graph(data)
+        self.assertEqual(graph["manual_link_port_conflict_count"], 1)
+        check = graph["manual_link_checks"][0]
+        self.assertEqual(check["status"], "port_conflict")
+        self.assertEqual(check["expected_bridge_port"], "49154")
+        self.assertEqual(check["observed_bridge_ports"], ["49165"])
+        self.assertTrue(check["confirmation_preserved"])
+        self.assertTrue(any(c["reason"] == "manual_link_port_conflict"
+                            for c in graph["conflicts"]))
+        confirmed = [link for link in graph["links"]
+                     if link["evidence"] == "user_confirmed"]
+        self.assertEqual(len(confirmed), 1)
+        self.assertEqual(confirmed[0]["state"], "needs_review")
+        self.assertEqual(confirmed[0]["confirmation_status"], "port_conflict")
+
+    def test_manual_link_matching_port_is_consistent(self):
+        data = snapshot()
+        data["direct_links"] = []
+        data["mesh_links"] = []
+        data["manual_links"] = [{
+            "source_mac": SWITCH, "target_mac": OTHER,
+            "bridge_port": "49154", "vlan_id": "1",
+            "confirmation": "user_confirmed",
+        }]
+        data["reachable_via_port"] = [{
+            "source_mac": SWITCH, "target_mac": OTHER,
+            "bridge_port": "49154", "vlan_id": "1",
+        }]
+        graph = build_internal_graph(data)
+        self.assertEqual(graph["manual_link_port_conflict_count"], 0)
+        self.assertEqual(graph["manual_link_checks"][0]["status"], "consistent_with_fdb")
+
+    def test_manual_link_missing_fdb_is_not_a_conflict(self):
+        data = snapshot()
+        data["direct_links"] = []
+        data["mesh_links"] = []
+        data["manual_links"] = [{
+            "source_mac": SWITCH, "target_mac": OTHER,
+            "bridge_port": "49154", "vlan_id": "1",
+            "confirmation": "user_confirmed",
+        }]
+        data["reachable_via_port"] = []
+        graph = build_internal_graph(data)
+        self.assertEqual(graph["manual_link_port_conflict_count"], 0)
+        self.assertEqual(graph["manual_link_checks"][0]["status"], "not_observed")
+        self.assertEqual(len([link for link in graph["links"]
+                              if link["evidence"] == "user_confirmed"]), 1)
+
+    def test_manual_link_different_vlan_is_not_a_port_conflict(self):
+        data = snapshot()
+        data["direct_links"] = []
+        data["mesh_links"] = []
+        data["manual_links"] = [{
+            "source_mac": SWITCH, "target_mac": OTHER,
+            "bridge_port": "49154", "vlan_id": "1",
+            "confirmation": "user_confirmed",
+        }]
+        data["reachable_via_port"] = [{
+            "source_mac": SWITCH, "target_mac": OTHER,
+            "bridge_port": "49165", "vlan_id": "2",
+        }]
+        graph = build_internal_graph(data)
+        self.assertEqual(graph["manual_link_port_conflict_count"], 0)
+        self.assertEqual(graph["manual_link_checks"][0]["status"], "not_observed")
+
+
 if __name__ == "__main__":
     unittest.main()
