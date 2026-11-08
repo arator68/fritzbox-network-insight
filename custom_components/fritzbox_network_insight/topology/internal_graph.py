@@ -267,6 +267,52 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             "direct_device_without_lldp_confirmed": False,
         }
 
+    # Check port-specific operator confirmations against the latest saved FDB
+    # snapshot. Absence is not a conflict: FDB entries can age out. A MAC
+    # observed on another port of the SAME switch and VLAN is contradictory
+    # evidence, but does not authorize deleting the user's confirmation.
+    manual_link_checks: list[dict[str, Any]] = []
+    observed_by_switch: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    for group in fdb_port_groups:
+        for mac in group["reachable_macs"]:
+            observed_by_switch[(group["switch_mac"], mac, group["vlan_id"])].add(
+                group["bridge_port"]
+            )
+    for item in snapshot.get("manual_links", []):
+        if not isinstance(item, dict) or item.get("confirmation") != "user_confirmed":
+            continue
+        source = normalize_mac(item.get("source_mac"))
+        target = normalize_mac(item.get("target_mac"))
+        if not source or not target or source == target:
+            continue
+        expected_port = str(item.get("bridge_port") or "")
+        vlan = str(item.get("vlan_id") or "")
+        observed_ports = sorted(observed_by_switch.get((source, target, vlan), set()))
+        if not expected_port:
+            status = "unverifiable_no_port"
+        elif expected_port in observed_ports:
+            status = "consistent_with_fdb"
+        elif observed_ports:
+            status = "port_conflict"
+        else:
+            status = "not_observed"
+        check = {
+            "source_mac": source, "target_mac": target,
+            "expected_bridge_port": expected_port, "vlan_id": vlan,
+            "observed_bridge_ports": observed_ports,
+            "status": status, "confirmation_preserved": True,
+            "evidence": "last_saved_fdb_snapshot",
+        }
+        manual_link_checks.append(check)
+        if status == "port_conflict":
+            conflicts.append({"reason": "manual_link_port_conflict", **check})
+            for link in links:
+                if (link["evidence"] == "user_confirmed"
+                        and link["source_mac"] == source
+                        and link["target_mac"] == target):
+                    link["confirmation_status"] = "port_conflict"
+                    link["state"] = "needs_review"
+
     # Attach user-confirmed physical neighbors to matching FDB segments
     # without turning the remaining FDB members into direct links.
     for group in fdb_port_groups:
@@ -538,6 +584,9 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "mesh_lan_observations": mesh_lan_observations,
         "wlan_attachments": attachments,
         "conflicts": conflicts,
+        "manual_link_checks": manual_link_checks,
+        "manual_link_check_count": len(manual_link_checks),
+        "manual_link_port_conflict_count": sum(c["status"] == "port_conflict" for c in manual_link_checks),
         "node_count": len(nodes),
         "link_count": len(links),
         "wlan_attachment_count": len(attachments),
