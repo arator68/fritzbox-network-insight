@@ -225,6 +225,40 @@ class InternalGraphTests(unittest.TestCase):
         self.assertFalse(analysis["direct_device_without_lldp_confirmed"])
         self.assertFalse(group["direct_connection_inferred"])
 
+    def test_known_switch_name_is_candidate_not_confirmed_cable(self):
+        data = snapshot()
+        data["nodes"] = [
+            {"mac": SWITCH, "name": "TL-SG3428", "known_host": True},
+            {"mac": OTHER, "name": "TL-SG1024DE-koch-local", "known_host": True},
+            {"mac": CLIENT, "name": "Server-3", "known_host": True},
+        ]
+        data["reachable_via_port"] = [
+            {"source_mac": SWITCH, "target_mac": OTHER, "bridge_port": "49154",
+             "vlan_id": "1", "interface_name": "gigabitEthernet 1/0/2"},
+            {"source_mac": SWITCH, "target_mac": CLIENT, "bridge_port": "49154",
+             "vlan_id": "1", "interface_name": "gigabitEthernet 1/0/2"},
+        ]
+        graph = build_internal_graph(data)
+        analysis = graph["fdb_port_groups"][0]["port_analysis"]
+        self.assertEqual(analysis["downstream_switch_candidates"], [
+            {"mac": OTHER, "name": "TL-SG1024DE-koch-local",
+             "evidence": "known_host_name", "direct_link_confirmed": False}
+        ])
+        self.assertFalse(analysis["downstream_switch_confirmed"])
+        self.assertFalse(graph["fdb_port_groups"][0]["direct_connection_inferred"])
+
+    def test_unknown_switch_like_mac_is_not_a_candidate(self):
+        data = snapshot()
+        data["nodes"] = [{"mac": OTHER, "name": "TL-SG1024DE",
+                          "known_host": False}]
+        data["reachable_via_port"] = [{
+            "source_mac": SWITCH, "target_mac": OTHER,
+            "bridge_port": "49154", "vlan_id": "1",
+            "interface_name": "gigabitEthernet 1/0/2",
+        }]
+        analysis = build_internal_graph(data)["fdb_port_groups"][0]["port_analysis"]
+        self.assertEqual(analysis["downstream_switch_candidates"], [])
+
     def test_unknown_fdb_device_is_not_assumed_direct(self):
         data = snapshot()
         data["reachable_via_port"] = [{
