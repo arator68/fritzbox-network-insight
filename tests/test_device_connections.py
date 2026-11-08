@@ -62,6 +62,52 @@ class DeviceConnectionsTests(unittest.TestCase):
         self.assertEqual(result["parent_mac"], SWITCH)
         self.assertEqual(result["evidence"], "lldp")
 
+    def test_confirmed_downstream_switch_is_transit_not_direct_cable(self):
+        downstream = "EC:75:0C:C2:68:F7"
+        graph = {"lan_port_memberships": [{
+            "switch_mac": SWITCH, "bridge_port": "49154", "vlan_id": "1",
+            "members": [
+                {"mac": downstream, "physical_link_confirmed": True,
+                 "relationship": "confirmed_neighbor"},
+                {"mac": CLIENT, "physical_link_confirmed": False,
+                 "relationship": "reachable_via_port"},
+            ],
+        }], "links": [{
+            "source_mac": SWITCH, "target_mac": downstream,
+            "medium": "lan", "evidence": "user_confirmed",
+        }]}
+        entries = {e["mac"]: e for e in resolve_device_connections(graph)}
+        self.assertEqual(entries[CLIENT]["transit_neighbor_mac"], downstream)
+        self.assertFalse(entries[CLIENT]["physical_link_confirmed"])
+        self.assertEqual(entries[CLIENT]["connection_type"], "reachable_via_port")
+        self.assertTrue(entries[downstream]["physical_link_confirmed"])
+
+    def test_repeater_fdb_does_not_prove_backhaul(self):
+        repeater = "BA:FC:7D:AE:37:B9"
+        graph = {
+            "lan_port_memberships": [{
+                "switch_mac": SWITCH, "bridge_port": "49153", "vlan_id": "1",
+                "members": [{"mac": repeater}, {"mac": CLIENT}],
+            }],
+            "wlan_attachments": {CLIENT: {"parent_mac": repeater}},
+        }
+        entries = {e["mac"]: e for e in resolve_device_connections(graph)}
+        self.assertEqual(entries[CLIENT]["wlan_parent_connection"], "fdb_reachable_only")
+        self.assertEqual(entries[CLIENT]["parent_mac"], repeater)
+        self.assertFalse(entries[repeater]["physical_link_confirmed"])
+
+    def test_ambiguous_confirmed_neighbors_no_transit_choice(self):
+        graph = {"lan_port_memberships": [{
+            "switch_mac": SWITCH, "bridge_port": "49153", "vlan_id": "1",
+            "members": [
+                {"mac": ROUTER, "physical_link_confirmed": True},
+                {"mac": NAS, "physical_link_confirmed": True},
+                {"mac": CLIENT},
+            ],
+        }]}
+        entries = {e["mac"]: e for e in resolve_device_connections(graph)}
+        self.assertIsNone(entries[CLIENT]["transit_neighbor_mac"])
+
     def test_avm_logical_lan_does_not_confirm_cable(self):
         graph = {"links": [{
             "source_mac": SWITCH, "target_mac": ROUTER,
