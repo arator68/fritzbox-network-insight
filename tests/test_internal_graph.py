@@ -92,7 +92,7 @@ class InternalGraphTests(unittest.TestCase):
         self.assertEqual(lan[0]["evidence"], "lldp")
         self.assertEqual(graph["mesh_lan_observation_count"], 1)
         self.assertEqual(graph["mesh_lan_observations"][0]["target_mac"], OTHER)
-        self.assertEqual(graph["model_version"], 8)
+        self.assertEqual(graph["model_version"], 9)
 
     def test_disconnected_avm_lan_is_not_active_observation(self):
         data = snapshot()
@@ -112,7 +112,7 @@ class InternalGraphTests(unittest.TestCase):
              "vlan_id": "1", "interface_name": "gigabitEthernet 1/0/8"},
         ]
         graph = build_internal_graph(data)
-        self.assertEqual(graph["model_version"], 8)
+        self.assertEqual(graph["model_version"], 9)
         self.assertEqual(graph["fdb_port_group_count"], 1)
         group = graph["fdb_port_groups"][0]
         self.assertEqual(group["reachable_macs"], sorted([CLIENT, OTHER]))
@@ -273,7 +273,7 @@ class InternalGraphTests(unittest.TestCase):
              "vlan_id": "1", "interface_name": "gigabitEthernet 1/0/2"},
         ]
         graph = build_internal_graph(data)
-        self.assertEqual(graph["model_version"], 8)
+        self.assertEqual(graph["model_version"], 9)
         self.assertEqual(graph["network_segment_count"], 1)
         segment = graph["network_segments"][0]
         self.assertEqual(segment["segment_id"], f"{SWITCH}:49154:1")
@@ -316,7 +316,7 @@ class InternalGraphTests(unittest.TestCase):
             "confirmation": "user_confirmed",
         }]
         graph = build_internal_graph(data)
-        self.assertEqual(graph["model_version"], 8)
+        self.assertEqual(graph["model_version"], 9)
         self.assertEqual(len(graph["links"]), 1)
         self.assertEqual(graph["links"][0]["evidence"], "user_confirmed")
         segment = graph["network_segments"][0]
@@ -389,7 +389,7 @@ class InternalGraphTests(unittest.TestCase):
             "confirmation": "user_confirmed",
         }]
         graph = build_internal_graph(data)
-        self.assertEqual(graph["model_version"], 8)
+        self.assertEqual(graph["model_version"], 9)
         self.assertEqual(graph["graph_branch_count"], 1)
         branch = graph["graph_branches"][0]
         self.assertEqual(branch["parent_mac"], SWITCH)
@@ -418,6 +418,52 @@ class InternalGraphTests(unittest.TestCase):
         ]
         graph = build_internal_graph(data)
         self.assertEqual(graph["downstream_branch_count"], 0)
+
+    def test_lan_port_memberships_keep_three_evidence_classes_separate(self):
+        data = snapshot()
+        data["nodes"] = [
+            {"mac": SWITCH, "name": "Managed switch", "known_host": True},
+            {"mac": OTHER, "name": "Other switch", "known_host": True},
+            {"mac": CLIENT, "name": "Wireless client", "known_host": True},
+            {"mac": ROUTER, "name": "Router", "known_host": True},
+        ]
+        data["direct_links"] = [{
+            "source_mac": SWITCH, "target_mac": ROUTER,
+            "source_port_number": "2",
+        }]
+        data["reachable_via_port"] = [
+            {"source_mac": SWITCH, "target_mac": ROUTER,
+             "bridge_port": "49154", "vlan_id": "1",
+             "interface_name": "gigabitEthernet 1/0/2"},
+            {"source_mac": SWITCH, "target_mac": OTHER,
+             "bridge_port": "49154", "vlan_id": "1",
+             "interface_name": "gigabitEthernet 1/0/2"},
+            {"source_mac": SWITCH, "target_mac": CLIENT,
+             "bridge_port": "49154", "vlan_id": "1",
+             "interface_name": "gigabitEthernet 1/0/2"},
+        ]
+        data["manual_links"] = [{
+            "source_mac": SWITCH, "target_mac": OTHER,
+            "bridge_port": "49154", "vlan_id": "1",
+            "confirmation": "user_confirmed",
+        }]
+        graph = build_internal_graph(data)
+        self.assertEqual(graph["model_version"], 9)
+        self.assertEqual(graph["lan_port_membership_count"], 1)
+        port = graph["lan_port_memberships"][0]
+        members = {m["mac"]: m for m in port["members"]}
+        self.assertEqual(members[ROUTER]["evidence"], "lldp")
+        self.assertTrue(members[ROUTER]["physical_link_confirmed"])
+        self.assertEqual(members[OTHER]["evidence"], "user_confirmed")
+        self.assertTrue(members[OTHER]["physical_link_confirmed"])
+        self.assertEqual(members[CLIENT]["relationship"], "wlan_transit")
+        self.assertFalse(members[CLIENT]["physical_link_confirmed"])
+        self.assertEqual(port["confirmed_neighbor_count"], 2)
+        self.assertEqual(port["wlan_transit_count"], 1)
+        self.assertFalse(any(
+            frozenset((link["source_mac"], link["target_mac"]))
+            == frozenset((SWITCH, CLIENT)) for link in graph["links"]
+        ))
 
     def test_unknown_fdb_device_is_not_assumed_direct(self):
         data = snapshot()
