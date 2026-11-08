@@ -247,11 +247,36 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             "direct_device_without_lldp_confirmed": False,
         }
 
+    # Represent each observed switch/bridge/VLAN port as a segment.
+    # Membership is forwarding reachability, not a physical wiring claim.
+    # Keep LLDP-proven neighbors distinct from identity-based candidates.
+    network_segments = []
+    for group in fdb_port_groups:
+        analysis = group["port_analysis"]
+        network_segments.append({
+            "segment_id": (
+                f'{group["switch_mac"]}:{group["bridge_port"]}:{group["vlan_id"]}'
+            ),
+            "reporting_switch_mac": group["switch_mac"],
+            "bridge_port": group["bridge_port"],
+            "vlan_id": group["vlan_id"],
+            "interface_names": list(group["interface_names"]),
+            "evidence": "fdb_reachability",
+            "physical_topology_confirmed": False,
+            "lldp_confirmed_neighbors": list(group["lldp_neighbors"]),
+            "downstream_switch_candidates": list(
+                analysis["downstream_switch_candidates"]
+            ),
+            "reachable_devices": list(group["devices"]),
+            "reachable_mac_count": analysis["reachable_mac_count"],
+        })
+
     return {
         "nodes": nodes,
         "links": links,
         "reachability": reachability,
         "fdb_port_groups": fdb_port_groups,
+        "network_segments": network_segments,
         "mesh_lan_observations": mesh_lan_observations,
         "wlan_attachments": attachments,
         "conflicts": conflicts,
@@ -260,7 +285,8 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "wlan_attachment_count": len(attachments),
         "reachability_count": len(reachability),
         "fdb_port_group_count": len(fdb_port_groups),
+        "network_segment_count": len(network_segments),
         "mesh_lan_observation_count": len(mesh_lan_observations),
         "conflict_count": len(conflicts),
-        "model_version": 4,
+        "model_version": 5,
     }
