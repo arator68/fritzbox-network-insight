@@ -455,6 +455,44 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             "reason": "single_known_lan_mac_on_port",
         })
 
+    # History is independent of the latest FDB snapshot and never claims online status.
+    port_history: list[dict[str, Any]] = []
+    observed_keys = {
+        (group["switch_mac"], device["mac"], group["vlan_id"])
+        for group in fdb_port_groups for device in group["devices"]
+    }
+    for record in snapshot.get("port_history", []):
+        if not isinstance(record, dict):
+            continue
+        source = normalize_mac(record.get("source_mac"))
+        target = normalize_mac(record.get("target_mac"))
+        if not source or not target or source == target:
+            continue
+        pair = frozenset((source, target))
+        matching = [
+            link for link in links
+            if link["medium"] == "lan"
+            and link["evidence"] in ("lldp", "user_confirmed")
+            and frozenset((link["source_mac"], link["target_mac"])) == pair
+        ]
+        port_history.append({
+            "source_mac": source,
+            "target_mac": target,
+            "target_name": str(nodes.get(target, {}).get("name") or ""),
+            "bridge_port": str(record.get("bridge_port") or ""),
+            "vlan_id": str(record.get("vlan_id") or ""),
+            "interface_name": str(record.get("interface_name") or ""),
+            "last_seen": str(record.get("last_seen") or ""),
+            "last_observation_evidence": str(record.get("evidence") or ""),
+            "present_in_saved_fdb_snapshot": (
+                source, target, str(record.get("vlan_id") or "")
+            ) in observed_keys,
+            "online_confirmed": False,
+            "physical_link_confirmed": bool(matching),
+            "physical_evidence": matching[0]["evidence"] if matching else None,
+            "status": "last_observed",
+        })
+
     # Represent each observed switch/bridge/VLAN port as a segment.
     # Membership is forwarding reachability, not a physical wiring claim.
     # Keep LLDP-proven neighbors distinct from identity-based candidates.
@@ -493,6 +531,8 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "lan_port_membership_count": len(lan_port_memberships),
         "physical_link_candidates": physical_link_candidates,
         "physical_link_candidate_count": len(physical_link_candidates),
+        "port_history": port_history,
+        "port_history_count": len(port_history),
         "downstream_branch_count": len(downstream_branches),
         "mesh_lan_observations": mesh_lan_observations,
         "wlan_attachments": attachments,
@@ -505,5 +545,5 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "network_segment_count": len(network_segments),
         "mesh_lan_observation_count": len(mesh_lan_observations),
         "conflict_count": len(conflicts),
-        "model_version": 10,
+        "model_version": 11,
     }
