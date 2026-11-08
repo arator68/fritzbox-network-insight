@@ -92,7 +92,7 @@ class InternalGraphTests(unittest.TestCase):
         self.assertEqual(lan[0]["evidence"], "lldp")
         self.assertEqual(graph["mesh_lan_observation_count"], 1)
         self.assertEqual(graph["mesh_lan_observations"][0]["target_mac"], OTHER)
-        self.assertEqual(graph["model_version"], 2)
+        self.assertEqual(graph["model_version"], 3)
 
     def test_disconnected_avm_lan_is_not_active_observation(self):
         data = snapshot()
