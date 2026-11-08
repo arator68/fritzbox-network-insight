@@ -27,6 +27,7 @@ from .topology.store import TopologyStore
 from .topology.fdb_model import build_fdb_observations
 from .topology.fdb_store import FdbTopologyStore
 from .topology.combined import build_combined_topology
+from .topology.internal_graph import build_internal_graph
 from .dns import resolve_dns_name
 from .fritzbox_client import (
     FritzBoxAuthenticationError,
@@ -114,6 +115,10 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             self.data or {},
             self.mesh_topology,
         )
+
+    def get_internal_topology_graph(self) -> dict[str, Any]:
+        """Build the full internal graph without exposing it as sensor attributes."""
+        return build_internal_graph(self.get_combined_topology_snapshot())
 
     def get_topology_snapshot(self) -> dict[str, Any]:
         """Provide a single, dashboard-ready topology data model."""
