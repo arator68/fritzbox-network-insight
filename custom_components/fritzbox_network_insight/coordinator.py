@@ -17,6 +17,7 @@ from homeassistant.helpers import device_registry as dr
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
 from .device_classifier import classify_device
 from .discovery import DiscoveryManager
+from .discovery.snmp import SnmpDiscoveryAdapter
 from .mac_vendor import lookup_mac_vendor
 from .mesh import fetch_mesh, parse_mesh
 from .snmp_device_classifier import classify_snmp_system
@@ -68,6 +69,8 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self.entry = entry
         self.mesh_topology: dict[str, Any] = {"nodes": [], "links": [], "aliases": {}}
         self._mesh_last_attempt: float = 0.0
+        self._snmp_last_attempt: float = 0.0
+        self._snmp_scan_lock = asyncio.Lock()
         self._dns_cache: dict[str, tuple[float, str | None]] = {}
         self._dns_semaphore = asyncio.Semaphore(4)
         super().__init__(
@@ -327,6 +330,41 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                 except Exception:
                     _LOGGER.exception("Could not persist device identification")
 
+    async def _async_refresh_snmp_topology(self, hosts: dict[str, dict[str, Any]]) -> None:
+        """Periodically refresh configured switches; never invent physical links.
+
+        Failed or incomplete walks preserve the last saved observations. The
+        configured SNMPv3 credentials are never logged or copied to diagnostics.
+        """
+        configured = self.entry.options.get("snmp_devices", {})
+        if not isinstance(configured, dict) or not configured:
+            return
+        now = monotonic()
+        if self._snmp_last_attempt and now - self._snmp_last_attempt < 300:
+            return
+        if self._snmp_scan_lock.locked():
+            return
+        async with self._snmp_scan_lock:
+            self._snmp_last_attempt = monotonic()
+            adapter = SnmpDiscoveryAdapter(configured)
+            for mac in sorted(configured):
+                host = hosts.get(mac)
+                if not host:
+                    continue
+                try:
+                    evidence = await asyncio.wait_for(adapter.async_discover(host), timeout=15)
+                    if evidence is None:
+                        continue
+                    details = adapter.results.get(mac, {})
+                    if details.get("fdb_status") != "ok" or details.get("fdb_truncated") != "false":
+                        continue
+                    await self.async_record_manual_discovery(
+                        mac, status="responded", requested=1, checked=1,
+                        protocols=("snmp",), details=details,
+                    )
+                except Exception:
+                    _LOGGER.warning("Automatic SNMP topology refresh failed for %s", mac)
+
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         """Fetch hosts in the executor and index them by stable MAC address."""
         try:
@@ -344,6 +382,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             raise UpdateFailed("Unexpected error while retrieving FRITZ!Box hosts") from err
 
         indexed = {host["mac"]: host for host in hosts}
+        await self._async_refresh_snmp_topology(indexed)
         # Mesh refresh every 15 minutes; keep the last successful result.
         now_mesh = monotonic()
         if not self._mesh_last_attempt or now_mesh - self._mesh_last_attempt >= 900:
