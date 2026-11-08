@@ -67,6 +67,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 "node_count": graph["node_count"],
                 "link_count": graph["link_count"],
                 "reachability_count": graph["reachability_count"],
+                "mesh_lan_observation_count": graph["mesh_lan_observation_count"],
+                "mesh_lan_observations": graph["mesh_lan_observations"],
                 "wlan_attachment_count": graph["wlan_attachment_count"],
                 "conflict_count": graph["conflict_count"],
                 "links": [
@@ -86,7 +88,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 ],
                 "wlan_attachments": graph["wlan_attachments"],
                 "conflicts": graph["conflicts"],
-                "note": "FDB is reachability evidence, not proof of a direct cable.",
+                "note": "Only LLDP confirms direct LAN cables; AVM LAN and FDB are observations.",
             }
 
         hass.services.async_register(
