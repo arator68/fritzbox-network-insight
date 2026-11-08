@@ -77,6 +77,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 "network_segments": graph["network_segments"],
                 "downstream_branches": graph["downstream_branches"],
                 "downstream_branch_count": graph["downstream_branch_count"],
+                "graph_branches": graph["graph_branches"],
+                "graph_branch_count": graph["graph_branch_count"],
                 "mesh_lan_observation_count": graph["mesh_lan_observation_count"],
                 "mesh_lan_observations": graph["mesh_lan_observations"],
                 "wlan_attachment_count": graph["wlan_attachment_count"],
