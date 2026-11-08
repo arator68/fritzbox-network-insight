@@ -246,6 +246,7 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             for d in devices
             if d["known_host"]
             and d["mac"] not in confirmed
+            and frozenset((source, d["mac"])) not in confirmed_pairs
             and d["connection_class"] == "fdb_reachable_only"
             and any(token in d["name"].lower()
                     for token in ("switch", "tl-sg", "dgs-", "netgear gs"))
@@ -285,6 +286,11 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             )
         ]
         group["user_confirmed_neighbors"] = confirmed_manual
+        if confirmed_manual:
+            group["port_analysis"]["downstream_switch_candidates"] = [
+                candidate for candidate in group["port_analysis"]["downstream_switch_candidates"]
+                if candidate["mac"] not in {n["mac"] for n in confirmed_manual}
+            ]
 
     # Represent each observed switch/bridge/VLAN port as a segment.
     # Membership is forwarding reachability, not a physical wiring claim.
