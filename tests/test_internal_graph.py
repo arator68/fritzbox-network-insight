@@ -159,6 +159,36 @@ class InternalGraphTests(unittest.TestCase):
         self.assertFalse(devices[CLIENT]["lldp_direct_neighbor"])
         self.assertFalse(group["direct_connection_inferred"])
 
+    def test_numeric_lldp_ports_match_real_switch_interface_labels(self):
+        data = snapshot()
+        data["direct_links"] = [
+            {"source_mac": SWITCH, "target_mac": ROUTER, "source_port_number": "1"},
+            {"source_mac": SWITCH, "target_mac": OTHER, "source_port_number": "8"},
+        ]
+        data["reachable_via_port"] = [
+            {"source_mac": SWITCH, "target_mac": ROUTER, "bridge_port": "49153",
+             "vlan_id": "1", "interface_name": "gigabitEthernet 1/0/1"},
+            {"source_mac": SWITCH, "target_mac": OTHER, "bridge_port": "49160",
+             "vlan_id": "1", "interface_name": "gigabitEthernet 1/0/8"},
+        ]
+        groups = {g["bridge_port"]: g for g in build_internal_graph(data)["fdb_port_groups"]}
+        self.assertEqual(groups["49153"]["lldp_neighbors"][0]["mac"], ROUTER)
+        self.assertEqual(groups["49160"]["lldp_neighbors"][0]["mac"], OTHER)
+        self.assertEqual(groups["49153"]["devices"][0]["connection_class"], "lldp_confirmed_lan")
+        self.assertEqual(groups["49160"]["devices"][0]["connection_class"], "lldp_confirmed_lan")
+        self.assertFalse(groups["49153"]["direct_connection_inferred"])
+
+    def test_ambiguous_numeric_lldp_port_does_not_assign_neighbor(self):
+        data = snapshot()
+        data["reachable_via_port"] = [
+            {"source_mac": SWITCH, "target_mac": ROUTER, "bridge_port": "49153",
+             "vlan_id": "1", "interface_name": "gigabitEthernet 1/0/1"},
+            {"source_mac": SWITCH, "target_mac": CLIENT, "bridge_port": "999",
+             "vlan_id": "1", "interface_name": "otherEthernet 2/0/1"},
+        ]
+        groups = build_internal_graph(data)["fdb_port_groups"]
+        self.assertTrue(all(not g["lldp_neighbors"] for g in groups))
+
     def test_unknown_fdb_device_is_not_assumed_direct(self):
         data = snapshot()
         data["reachable_via_port"] = [{
