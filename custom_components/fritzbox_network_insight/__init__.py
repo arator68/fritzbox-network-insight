@@ -32,6 +32,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_load_topology()
     await coordinator.async_load_fdb_topology()
     await coordinator.async_load_manual_links()
+    await coordinator.async_load_port_history()
     # IEEE vendor CSV must be read outside the HA event loop.
     await hass.async_add_executor_job(preload_mac_vendor_registry)
 
@@ -83,6 +84,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 "lan_port_membership_count": graph["lan_port_membership_count"],
                 "physical_link_candidates": graph["physical_link_candidates"],
                 "physical_link_candidate_count": graph["physical_link_candidate_count"],
+                "port_history": graph["port_history"],
+                "port_history_count": graph["port_history_count"],
                 "mesh_lan_observation_count": graph["mesh_lan_observation_count"],
                 "mesh_lan_observations": graph["mesh_lan_observations"],
                 "wlan_attachment_count": graph["wlan_attachment_count"],
@@ -208,6 +211,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         f"{DOMAIN}.topology.{entry.entry_id}",
         f"{DOMAIN}.fdb.{entry.entry_id}",
         f"{DOMAIN}.manual_links.{entry.entry_id}",
+        f"{DOMAIN}.port_history.{entry.entry_id}",
     )
     for key in keys:
         await Store(hass, 1, key).async_remove()
