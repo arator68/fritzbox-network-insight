@@ -654,6 +654,18 @@ class InternalGraphTests(unittest.TestCase):
         self.assertEqual(len(confirmed), 1)
         self.assertEqual(confirmed[0]["state"], "needs_review")
         self.assertEqual(confirmed[0]["confirmation_status"], "port_conflict")
+        self.assertEqual(graph["graph_branch_count"], 0)
+        self.assertEqual(graph["downstream_branch_count"], 0)
+        connection = next(d for d in graph["device_connections"] if d["mac"] == OTHER)
+        self.assertEqual(connection["connection_type"], "disputed_lan")
+        self.assertEqual(connection["status"], "needs_review")
+        self.assertFalse(connection["physical_link_confirmed"])
+        self.assertIsNone(connection["parent_mac"])
+        self.assertFalse(any(
+            neighbor["mac"] == OTHER
+            for group in graph["fdb_port_groups"]
+            for neighbor in group["user_confirmed_neighbors"]
+        ))
 
     def test_manual_link_matching_port_is_consistent(self):
         data = snapshot()
