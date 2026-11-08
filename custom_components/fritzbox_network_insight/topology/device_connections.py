@@ -110,6 +110,17 @@ def resolve_device_connections(graph: Mapping[str, Any]) -> list[dict[str, Any]]
         if not source or not target:
             continue
         entry = record(target)
+        if link.get("state") == "needs_review":
+            # A saved confirmation contradicted by FDB is not an active
+            # physical connection. Keep the observation and review state.
+            entry.update({
+                "connection_type": "disputed_lan",
+                "parent_mac": None,
+                "evidence": "user_confirmed",
+                "physical_link_confirmed": False,
+                "status": "needs_review",
+            })
+            continue
         entry.update({
             "connection_type": "confirmed_lan",
             "parent_mac": source,
