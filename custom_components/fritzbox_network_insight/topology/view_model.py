@@ -28,6 +28,8 @@ def build_topology_view(graph: Mapping[str, Any]) -> dict[str, Any]:
                 "name": str(item.get("name") or mac),
                 "ip_address": str(item.get("ip_address") or ""),
                 "device_type": item.get("device_type"),
+                "device_type_source": item.get("device_type_source"),
+                "device_type_confidence": item.get("device_type_confidence"),
                 "mesh_role": item.get("mesh_role"),
             }
 
