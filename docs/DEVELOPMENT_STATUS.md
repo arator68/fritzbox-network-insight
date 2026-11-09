@@ -170,3 +170,10 @@ Server-3
 - `wlan_details.py` liest die TR-064 WLAN-Geräteliste aus den WLANConfiguration-Instanzen und unterstützt explizite Band-/Kanalbreitenfelder, aber nicht die zusätzlichen AVM-Weboberflächenwerte wie WDS/STBC. Instanznummern dürfen nicht als Funkband interpretiert werden.
 - Neuer gezielter Regressionstest in `tests/test_mesh_wlan_details.py`: prüft getrennte RX-/TX-Werte, 0 als gültige Rate, 150/150-Maximum, rohe Signalwerte und das selektive Extrahieren vorhandener Funkmetadaten ohne erfundene dBm-Werte. Commit `4636a25`; **CI-Ausführung dieses neuen Commits noch nicht bestätigt**.
 - Weiteres Vorgehen: CI abwarten; vor einer Erweiterung der sichtbaren Attribute prüfen, ob ein reales Mesh-Payload des Geräts diese Funkmetadaten tatsächlich enthält. Keine zusätzliche HA-Installation allein für die Quellcodeprüfung.
+
+## 13. 2026-11-09 – Rückmeldung zu GitHub-Tests
+
+- Nutzer bestätigt nach dem zusätzlichen Regressionstest und der Dokumentationsaktualisierung: **„tests ok“**. Die GitHub-Tests des aktuellen Feature-Branches sind damit laut Nutzerrückmeldung erfolgreich.
+- Der neue Regressionstest zur RX-/TX-Feldzuordnung ist damit nach Nutzerangabe grün. Das belegt die Parser-Verarbeitung, **nicht** die Gleichheit der zeitlich getrennten AVM-Weboberflächen- und Mesh-Messwerte.
+- Bereits bestätigter HA-Praxistest der WLAN-Attribute bleibt gültig; seitdem wurde nur ein Test und die Dokumentation geändert. **Kein erneuter Home-Assistant-Neustart erforderlich.**
+- Nächster Schritt: Feature-Branch zur Prüfung als Pull Request gegen `develop` vorbereiten; mögliche Erweiterungen zu Funkmetadaten getrennt und quellenbasiert behandeln.
