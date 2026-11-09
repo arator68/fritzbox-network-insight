@@ -56,6 +56,24 @@
           "no_targets": "Keine Zielgeräte",
           "no_adapters_configured": "Keine Erkennungsmodule eingerichtet"
         }
+      },
+      "wlan_channel": {
+        "name": "WLAN-Kanal"
+      },
+      "wlan_channel_width": {
+        "name": "WLAN-Gerät Kanalbreite (TR-064)"
+      },
+      "wlan_mesh_channel_width": {
+        "name": "Mesh-Funkkanalbreite"
+      },
+      "wlan_rx_rate": {
+        "name": "WLAN-Empfangsdatenrate (Mesh)"
+      },
+      "wlan_tx_rate": {
+        "name": "WLAN-Sendedatenrate (Mesh)"
+      },
+      "wlan_signal_strength": {
+        "name": "WLAN-Signalstärke (TR-064)"
       }
     }
   }
