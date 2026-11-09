@@ -10,7 +10,7 @@ IF_OPER_STATUS = "1.3.6.1.2.1.2.2.1.8"
 
 MAX_PORTS = 128
 MAX_ROWS = 256
-READ_TIMEOUT = 3.0
+READ_TIMEOUT = 6.0
 
 
 def parse_port_telemetry(
@@ -60,11 +60,11 @@ def parse_port_telemetry(
 
 
 async def async_read_port_telemetry(engine: Any, user: Any, target: Any) -> dict[str, Any]:
-    """Bounded, optional SNMPv3 IF-MIB reads; failures remain explicit."""
+    """Read IF-MIB with explicit, non-sensitive failure classifications."""
     import asyncio
     from pysnmp.hlapi.v3arch.asyncio import ContextData, ObjectIdentity, ObjectType, walk_cmd
 
-    async def walk(base: str) -> list[tuple[str, str]] | None:
+    async def walk(base: str) -> tuple[list[tuple[str, str]] | None, str]:
         async def read() -> list[tuple[str, str]]:
             rows: list[tuple[str, str]] = []
             async for error, status, _, var_binds in walk_cmd(
@@ -72,7 +72,7 @@ async def async_read_port_telemetry(engine: Any, user: Any, target: Any) -> dict
                 ObjectType(ObjectIdentity(base)), lexicographicMode=False,
             ):
                 if error or status:
-                    raise RuntimeError("SNMP IF-MIB read failed")
+                    raise RuntimeError("snmp_error")
                 for oid, value in var_binds:
                     key = str(oid)
                     if not key.startswith(base + "."):
@@ -81,17 +81,37 @@ async def async_read_port_telemetry(engine: Any, user: Any, target: Any) -> dict
                     if len(rows) >= MAX_ROWS:
                         return rows
             return rows
-        try:
-            return await asyncio.wait_for(read(), timeout=READ_TIMEOUT)
-        except Exception:
-            return None
 
-    names, high, speed, status = await asyncio.gather(
-        walk(IF_NAME), walk(IF_HIGH_SPEED), walk(IF_SPEED), walk(IF_OPER_STATUS)
+        try:
+            rows = await asyncio.wait_for(read(), timeout=READ_TIMEOUT)
+            return rows, "ok" if rows else "empty"
+        except asyncio.TimeoutError:
+            return None, "timeout"
+        except Exception:
+            return None, "snmp_error"
+
+    # The essential name column is read first. This also avoids four
+    # simultaneous walks competing with the already-running FDB reads.
+    names, name_status = await walk(IF_NAME)
+    if not names:
+        return {"status": "unavailable", "reason": "ifName_" + name_status, "ports": []}
+
+    high_result, speed_result, status_result = await asyncio.gather(
+        walk(IF_HIGH_SPEED), walk(IF_SPEED), walk(IF_OPER_STATUS)
     )
-    if names is None:
-        return {"status": "unavailable", "ports": []}
+    high, high_status = high_result
+    speed, speed_status = speed_result
+    statuses, oper_status = status_result
+    ports = parse_port_telemetry(names, high or [], speed or [], statuses or [])
     return {
         "status": "ok",
-        "ports": parse_port_telemetry(names, high or [], speed or [], status or []),
+        "reason": "ok" if all(s == "ok" for s in (high_status, speed_status, oper_status))
+                  else "partial",
+        "columns": {
+            "ifName": name_status,
+            "ifHighSpeed": high_status,
+            "ifSpeed": speed_status,
+            "ifOperStatus": oper_status,
+        },
+        "ports": ports,
     }
