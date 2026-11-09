@@ -58,34 +58,34 @@
         }
       },
       "wlan_mesh_peer_channel_width": {
-        "name": "WLAN-Kanalbreite (Mesh-Gegenstelle)"
+        "name": "WLAN-Kanalbreite"
       },
       "wlan_mesh_channel": {
-        "name": "WLAN-Kanal (Mesh)"
+        "name": "WLAN-Kanal"
       },
       "wlan_mesh_signal_rx_raw": {
-        "name": "WLAN-Empfangssignal (Mesh-Rohwert)"
+        "name": "WLAN-Empfangssignal"
       },
       "wlan_mesh_signal_tx_raw": {
-        "name": "WLAN-Sendesignal (Mesh-Rohwert)"
+        "name": "WLAN-Sendesignal"
       },
       "wlan_channel": {
-        "name": "WLAN-Kanal (Quelle im Attribut)"
+        "name": "WLAN-Kanal"
       },
       "wlan_channel_width": {
-        "name": "WLAN-Gerätekanalbreite (Quelle im Attribut)"
+        "name": "WLAN-Kanalbreite"
       },
       "wlan_mesh_channel_width": {
         "name": "Mesh-Funkkanalbreite"
       },
       "wlan_rx_rate": {
-        "name": "WLAN-Mesh-Datenrate RX (AVM-Rohfeld)"
+        "name": "WLAN-Datenrate RX"
       },
       "wlan_tx_rate": {
-        "name": "WLAN-Mesh-Datenrate TX (AVM-Rohfeld)"
+        "name": "WLAN-Datenrate TX"
       },
       "wlan_signal_strength": {
-        "name": "WLAN-Signal (TR-064 / Mesh-Rohwert)"
+        "name": "WLAN-Signalstärke"
       }
     }
   }
