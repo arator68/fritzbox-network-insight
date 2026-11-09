@@ -31,7 +31,8 @@ class TestMeshWlanDetails(unittest.TestCase):
                 "node_links": [{"uid": "link", "state": "CONNECTED",
                     "node_1_uid": "ap", "node_2_uid": "client",
                     "rx_rcpi": -55, "tx_rcpi": -57,
-                    "cur_data_rate_rx": 86000, "cur_data_rate_tx": 68000}]
+                    "cur_data_rate_rx": 86000, "cur_data_rate_tx": 68000,
+                    "max_data_rate_rx": 143400, "max_data_rate_tx": 143400}]
             }]},
             {"uid": "client", "device_mac_address": "20:6E:F1:02:62:D8",
              "node_interfaces": []},
@@ -43,6 +44,11 @@ class TestMeshWlanDetails(unittest.TestCase):
         self.assertEqual(radio["mesh_rx_rcpi_raw"], -55)
         self.assertEqual(radio["mesh_rate_rx_kbps"], 86000)
         self.assertEqual(radio["mesh_wifi_channel"], 11)
+        self.assertEqual(radio["wifi_rate_rx_mbps"], 86)
+        self.assertEqual(radio["wifi_rate_tx_mbps"], 68)
+        self.assertEqual(radio["wifi_rate_rx_max_mbps"], 143.4)
+        self.assertEqual(radio["wifi_rate_tx_max_mbps"], 143.4)
+        self.assertEqual(radio["wifi_mesh_signal_rx_raw"], -55)
         self.assertNotIn("wifi_signal_dbm", radio)
 
     def test_radio_schema_fields_only_allow_safe_scalars(self):
