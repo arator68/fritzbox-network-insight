@@ -11,3 +11,17 @@ topology_diagnostics:
       example: "0123456789abcdef0123456789abcdef"
       selector:
         text:
+
+topology_view:
+  name: Network topology view
+  description: >-
+    Return MAC-identified nodes, confirmed LAN and Mesh WLAN edges,
+    and separate FDB branch memberships for a network map.
+    Read-only; unknown repeater uplinks are not inferred.
+  fields:
+    entry_id:
+      name: Configuration entry ID
+      description: Required when multiple FRITZ!Box entries are configured.
+      required: false
+      selector:
+        text:
