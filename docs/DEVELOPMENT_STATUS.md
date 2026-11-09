@@ -218,3 +218,10 @@ Server-3
 - In den 55 WLAN-Geräte-Diagnosen wurden keine expliziten `wifi_standard`- oder `stream_count`-Rohfelder in den `mesh_wlan_*_radio_fields` gefunden; `wifi_frequency_band_mhz` war ebenfalls nicht vorhanden.
 - Die neu implementierte Ausgabe von `channel_width` aus Mesh-Rohmetadaten ist damit anhand realer Daten relevant, benötigt jedoch eine **klare Kennzeichnung als Mesh-Kanalbreite** (nicht ungeprüft als Client-Link-Bandbreite).
 - Nächster Schritt: Bedeutung/Zuordnung von Mesh-Interface-Kanalbreite vs. TR-064-Client-Kanalbreite im Code überprüfen, Attribute quellen- und scope-sicher benennen und Regressionstests ergänzen. Kein HA-Neustart erforderlich.
+
+## 19. 2026-11-09 – Mesh- und TR-064-Kanalbreiten getrennt
+
+- In `wlan_device_attributes.py` wird das aus `mesh_wlan_channel_radio_fields.channel_width` stammende Feld jetzt explizit als `mesh_radio_channel_width` veröffentlicht (mit `raw_scope: channel` und `measurement_scope: mesh_radio_channel`). Das bisherige `mesh_wifi_channel_width_raw` bleibt unverändert erhalten und erhält ebenfalls `measurement_scope: mesh_radio_channel`.
+- `wifi_channel_width` aus der TR-064-WLAN-Geräteliste bleibt unter dem bisherigen Namen erhalten und bekommt `measurement_scope: tr064_wlan_device`. Die genaue Semantik des AVM-Feldes wird nicht über die Quelle hinaus behauptet; insbesondere wird es nicht mit der Mesh-Funkzellenbreite gleichgesetzt.
+- Regressionstest `test_mesh_and_tr064_channel_widths_remain_distinct`: 80 (TR-064) vs. 160 MHz (Mesh) bleiben als getrennte Werte inklusive Quelle, Zeitstempel und Messbereich sichtbar. Der bestehende Metadatentest wurde an den eindeutigen Mesh-Feldnamen angepasst.
+- **GitHub-CI für diese neuen Commits noch nicht bestätigt.** Kein HA-Neustart nötig; Installation erst nach Tests und gebündeltem PR.
