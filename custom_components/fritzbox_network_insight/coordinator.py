@@ -26,6 +26,7 @@ from .device_details import (
     DeviceDetails, details_from_host, add_snmp_details,
     add_mesh_link_details, add_lldp_link_details, add_wlan_details,
 )
+from .lan_device_details import add_lan_port_details
 from .snmp_device_classifier import classify_snmp_system
 from .identification_store import IdentificationStore
 from .topology.lldp_matcher import match_lldp_neighbors
@@ -506,6 +507,9 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                         key, value, source="avm_mesh_radio",
                         observed_at=self._mesh_wlan_observed_at,
                     )
+        add_lan_port_details(
+            self.device_details, self.discovery_results, self.fdb_observations
+        )
         _LOGGER.info("FRITZ!Box host scan completed: %d device(s) found", len(indexed))
         for host in indexed.values():
             _LOGGER.debug(
