@@ -19,6 +19,9 @@ _WLAN_KEYS = (
     "wifi_signal_strength", "wifi_mesh_signal_rx_raw",
     "mesh_rx_rcpi_raw", "mesh_tx_rcpi_raw",
     "peer_node_uid",
+    "mesh_rate_link_owner_is_node_1",
+    "mesh_rate_client_is_node_1",
+    "mesh_rate_link_has_source_target",
 )
 
 # Mesh radio metadata is recorded as raw source-specific dictionaries. Only
