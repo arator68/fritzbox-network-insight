@@ -18,6 +18,7 @@ from .entity_id_migration import (
 )
 from .discovery_result import ManualDiscoveryResultSensor
 from .wlan_device_attributes import wlan_details_attribute
+from .wlan_metric_sensors import WLAN_METRICS, metric_observation
 
 
 async def async_setup_entry(
@@ -28,6 +29,7 @@ async def async_setup_entry(
     """Create the overview sensor and one status sensor per discovered MAC."""
     coordinator: FritzBoxDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     known_macs: set[str] = set()
+    wlan_macs: set[str] = set()
 
     # Migrate registered legacy IDs before creating/adding entities.
     for mac, host in sorted((coordinator.data or {}).items()):
@@ -61,6 +63,9 @@ async def async_setup_entry(
     for mac in sorted((coordinator.data or {}).keys()):
         entities.append(FritzBoxHostStatusSensor(coordinator, entry, mac))
         entities.append(ManualDiscoveryResultSensor(coordinator, entry, mac))
+        if _is_wlan((coordinator.data or {}).get(mac)):
+            entities.extend(FritzBoxWlanMetricSensor(coordinator, mac, key) for key in WLAN_METRICS)
+            wlan_macs.add(mac)
         known_macs.add(mac)
     async_add_entities(entities)
 
@@ -95,12 +100,14 @@ async def async_setup_entry(
                 known_macs.add(mac)
                 new_entities.append(FritzBoxHostStatusSensor(coordinator, entry, mac))
                 new_entities.append(ManualDiscoveryResultSensor(coordinator, entry, mac))
+            if mac not in wlan_macs and _is_wlan((coordinator.data or {}).get(mac)):
+                wlan_macs.add(mac)
+                new_entities.extend(FritzBoxWlanMetricSensor(coordinator, mac, key) for key in WLAN_METRICS)
         if new_entities:
             async_add_entities(new_entities)
 
     entry.async_on_unload(coordinator.async_add_listener(_add_new_hosts))
-
-
+\n\ndef _is_wlan(host: dict[str, Any] | None) -> bool:\n    return str((host or {}).get("interface_type") or "").strip().lower() in {"802.11", "wlan", "wifi", "wi-fi"}\n\n\nclass FritzBoxWlanMetricSensor(\n    CoordinatorEntity[FritzBoxDataUpdateCoordinator], SensorEntity\n):\n    """A numeric WLAN measurement, retaining its original provenance."""\n\n    _attr_has_entity_name = True\n    _attr_icon = "mdi:wifi"\n\n    def __init__(self, coordinator: FritzBoxDataUpdateCoordinator, mac: str, metric: str) -> None:\n        super().__init__(coordinator)\n        self._mac = mac\n        self._metric = metric\n        compact_mac = mac.replace(":", "").lower()\n        self._attr_unique_id = f"host_{compact_mac}_wlan_{metric}"\n        self.entity_id = f"sensor.fritzbox_network_insight_{compact_mac}_wlan_{metric}"\n        self._attr_translation_key = f"wlan_{metric}"\n        self._attr_native_unit_of_measurement = WLAN_METRICS[metric][2]\n        self._attr_device_info = DeviceInfo(\n            identifiers={(DOMAIN, mac)}, connections={("mac", mac)},\n        )\n\n    @property\n    def _observation(self) -> dict[str, Any] | None:\n        host = (self.coordinator.data or {}).get(self._mac)\n        if not _is_wlan(host) or host.get("active") is not True:\n            return None\n        details = self.coordinator.device_details.get(self._mac)\n        if details is None:\n            return None\n        return metric_observation(wlan_details_attribute(details, host.get("interface_type")), self._metric)\n\n    @property\n    def available(self) -> bool:\n        return super().available and self._observation is not None\n\n    @property\n    def native_value(self) -> int | float | None:\n        observation = self._observation\n        return observation["value"] if observation else None\n\n    @property\n    def extra_state_attributes(self) -> dict[str, Any]:\n        observation = self._observation\n        if observation is None:\n            return {}\n        return {key: value for key, value in observation.items() if key != "value"}\n\n
 class FritzBoxDeviceCountSensor(
     CoordinatorEntity[FritzBoxDataUpdateCoordinator], SensorEntity
 ):
