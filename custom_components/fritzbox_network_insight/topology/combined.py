@@ -21,6 +21,8 @@ def build_combined_topology(
                 "mac": mac, "name": str(host.get("name") or ""),
                 "ip_address": str(host.get("ip_address") or ""),
                 "device_type": host.get("device_type"),
+                "device_type_source": host.get("device_type_source"),
+                "device_type_confidence": host.get("device_type_confidence"),
                 "known_host": True,
             }
 
