@@ -87,7 +87,6 @@ TR064_RAW_FIELDS = {
     "IPAddress": "ipv4_address",
     "InterfaceType": "interface_type",
     "Active": "active",
-    "X_AVM-DE_Speed": "lan_speed_mbps",
 }
 
 
@@ -118,6 +117,12 @@ def details_from_host(host: Mapping[str, Any]) -> DeviceDetails:
         for raw_key, semantic_key in TR064_RAW_FIELDS.items():
             if raw_key in raw:
                 details.add(semantic_key, raw[raw_key], source="tr064")
+    # X_AVM-DE_Speed is a host-list rate, not a proven LAN port rate.
+    # Do not mislabel WLAN host rates as LAN speeds or RX/TX rates.
+    if isinstance(raw, Mapping) and "X_AVM-DE_Speed" in raw:
+        details.add(
+            "tr064_host_speed_mbps", raw["X_AVM-DE_Speed"], source="tr064"
+        )
     return details
 
 
@@ -213,9 +218,18 @@ def add_wlan_details(
         "wifi_speed_mbps", "wifi_signal_strength", "wifi_channel",
         "wifi_channel_width", "wifi_guest",
     }
-    for instance, fields in observations.items():
+    # Multiple WLANConfiguration services can return the same association.
+    # Retain one copy of each identical measurement rather than three clones.
+    seen: set[tuple[str, str]] = set()
+    for instance, fields in sorted(observations.items()):
         if not isinstance(fields, Mapping) or not instance.startswith("wlan_configuration_"):
             continue
-        for key in allowed:
-            if key in fields:
-                details.add(key, fields[key], source=f"tr064_{instance}")
+        for key in sorted(allowed):
+            if key not in fields:
+                continue
+            value = fields[key]
+            fingerprint = (key, repr(value))
+            if fingerprint in seen:
+                continue
+            seen.add(fingerprint)
+            details.add(key, value, source=f"tr064_{instance}")
