@@ -47,10 +47,39 @@ class TestLanPortDetails(unittest.TestCase):
         }]}
         join.add_lan_port_details(devices, discovery, fdb)
         item = devices[DEVICE].values("lan_switch_port")[0]
-        self.assertEqual(item.value["reported_speed_mbps"], 100)
+        self.assertEqual(item.value["switch_port_reported_speed_mbps"], 100)
         self.assertEqual(item.value["connection"], "reachable_via_port")
         self.assertEqual(item.source, "snmp_v3_if_mib+fdb")
-        self.assertNotIn("directly_connected", item.value)
+        self.assertEqual(item.value["direct_connection"], "unknown")
+        self.assertEqual(item.value["endpoint_access"], "unknown")
+        self.assertNotIn("reported_speed_mbps", item.value)
+
+    def test_wlan_peer_is_observed_not_inferred_from_switch(self):
+        devices = {DEVICE: model.build_device_details(DEVICE, {
+            "tr064": {"interface_type": "802.11"},
+        })}
+        devices[DEVICE].add("mesh_reported_link", {
+            "peer_mac": "E0:28:6D:C0:51:38",
+            "link_type": "WLAN", "link_state": "CONNECTED",
+        }, source="avm_mesh")
+        discovery = {SWITCH: {
+            "port_telemetry_status": "ok",
+            "port_telemetry": json.dumps([{
+                "if_index": 49160, "interface_name": "port8",
+                "reported_speed_mbps": 1000, "oper_status": "up",
+            }]),
+        }}
+        fdb = {SWITCH: [{
+            "target_mac": DEVICE, "if_index": "49160",
+            "interface_name": "port8", "connection": "reachable_via_port",
+        }]}
+        join.add_lan_port_details(devices, discovery, fdb)
+        result = devices[DEVICE].values("lan_switch_port")[0].value
+        self.assertEqual(result["endpoint_access"], "wlan")
+        self.assertEqual(result["wlan_peer_mac"], "E0:28:6D:C0:51:38")
+        self.assertEqual(result["switch_port_reported_speed_mbps"], 1000)
+        self.assertEqual(result["direct_connection"], "unknown")
+        self.assertNotIn("reported_speed_mbps", result)
 
     def test_no_match_or_failed_telemetry_does_not_guess(self):
         devices = {DEVICE: model.build_device_details(DEVICE, {})}
