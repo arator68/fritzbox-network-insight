@@ -108,6 +108,8 @@ class SnmpDiscoveryAdapter:
                 "fdb_truncated": str(fdb["truncated"]).lower(),
                 "fdb_entries": json.dumps(fdb["entries"], ensure_ascii=False),
                 "port_telemetry_status": ports["status"],
+                "port_telemetry_reason": ports.get("reason", ""),
+                "port_telemetry_columns": json.dumps(ports.get("columns", {})),
                 "port_telemetry_count": str(len(ports["ports"])),
                 "port_telemetry": json.dumps(ports["ports"], ensure_ascii=False),
             }
