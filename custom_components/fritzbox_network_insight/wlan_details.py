@@ -90,9 +90,9 @@ def fetch_wlan_devices(host: str, username: str, password: str, timeout: int = 1
                     mac = normalize_mac(association.get("NewAssociatedDeviceMACAddress"))
                     if mac:
                         mac_to_band[mac] = band
-                except (OSError, ValueError, KeyError):
+                except Exception:  # noqa: BLE001 - optional AVM service/action
                     continue
-        except (OSError, ValueError, KeyError):
+        except Exception:  # noqa: BLE001 - unsupported optional AVM service
             continue
     for instance in (1, 2, 3, 4):
         try:
@@ -116,7 +116,7 @@ def fetch_wlan_devices(host: str, username: str, password: str, timeout: int = 1
                     properties["wifi_frequency_band_mhz"] = mac_to_band[mac]
                 # Keep distinct per-instance observations; no inferred radio band.
                 records.setdefault(mac, {})[f"wlan_configuration_{instance}"] = properties
-        except (OSError, ValueError, ElementTree.ParseError, KeyError):
+        except Exception:  # noqa: BLE001 - unsupported optional AVM service or XML
             # Different FRITZ!OS releases expose different WLAN instances.
             continue
     return records
