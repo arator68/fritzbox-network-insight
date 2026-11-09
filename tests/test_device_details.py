@@ -64,6 +64,17 @@ class TestDeviceDetails(unittest.TestCase):
         self.assertEqual(details.values("wifi_speed_rx_mbps")[0].value, 86)
         self.assertFalse(details.available("wifi_signal_dbm"))
 
+    def test_wlan_observation_timestamp_and_deduplication(self):
+        details = model.build_device_details("20:6E:F1:02:62:D8", {})
+        captured = "2026-11-09T07:50:00+00:00"
+        model.add_wlan_details(details, {
+            "wlan_configuration_1": {"wifi_channel": 11, "wifi_guest": False},
+            "wlan_configuration_2": {"wifi_channel": 11},
+        }, observed_at=captured)
+        self.assertEqual(len(details.values("wifi_channel")), 1)
+        self.assertEqual(details.values("wifi_channel")[0].observed_at, captured)
+        self.assertEqual(details.values("wifi_guest")[0].observed_at, captured)
+
     def test_repeated_wlan_instances_are_deduplicated(self):
         details = model.build_device_details("20:6E:F1:02:62:D8", {})
         repeated = {"wifi_channel": 11, "wifi_channel_width": 20,
