@@ -4,7 +4,7 @@
 **Status:** Laufende Entwicklung; keine Release- oder Merge-Freigabe  
 **Verbindliche Anforderungen:** [SPECIFICATION.md](SPECIFICATION.md)  
 **Repository:** https://github.com/arator68/fritzbox-network-insight  
-**Aktueller Arbeitsbranch:** `develop` (PR #35 gemergt; neuer Feature-Branch für Folgearbeiten noch nicht angelegt)  
+**Aktueller Arbeitsbranch:** `feature/wlan-radio-metadata` (von `develop`; noch kein PR)  
 **Historischer Pull Request:** [#32 – Add automatic AVM Mesh observations to Network Insight](https://github.com/arator68/fritzbox-network-insight/pull/32) → `develop` (Status in Abschnitt 1 ist historisch und nicht der aktuelle Arbeitsauftrag)
 
 > **Zweck:** Diese Datei dokumentiert den tatsächlichen Arbeitsstand und die nächsten Schritte für die Fortsetzung in einem neuen Chat. Sie ergänzt die Spezifikation, ersetzt sie nicht. Angaben aus dem früheren Chat sind als solche gekennzeichnet; sie sind nicht automatisch durch CI oder Quellcode verifiziert.
@@ -185,3 +185,13 @@ Server-3
 - Der zuvor offene Hinweis in Abschnitt 13 („PR vorbereiten“) ist historisch; der PR ist inzwischen erledigt.
 - **Offen für spätere Arbeit:** Differenz zwischen zeitlich getrennten AVM-Oberflächen- und Mesh-Raten, zusätzliche Funkmetadaten nur bei verlässlicher Quelle, fehlender Zeitstempel der Mesh-Peer-Beobachtung.
 - **Nächster Schritt:** Folgearbeiten in einem neuen Feature-Branch von `develop` beginnen, Änderungen bündeln und die produktive HA-Instanz nicht nach jedem Commit neu starten.
+
+## 15. 2026-11-09 – WLAN-Funkmetadaten: konservative Erweiterung in Arbeit
+
+- Neuer Branch `feature/wlan-radio-metadata` von `develop` erstellt. **Noch nicht gemergt oder in Home Assistant installiert.**
+- AVM dokumentiert versionierte Mesh-Topologie-JSON-Schemas; welche Felder im konkreten FRITZ!OS-/Geräte-Payload vorhanden sind, muss pro Beobachtung geprüft werden. Referenz: https://fritz.com/pages/schnittstellen (Mesh-Topologie, Schema v8.7 für FRITZ!OS 8.25).
+- Codeprüfung: `mesh_wlan_details.py` extrahiert bereits selektive Rohfelder aus Link/Interface/Kanal in `mesh_wlan_*_radio_fields`, sofern die AVM-Payload diese enthält. `wlan_device_attributes.py` gab diese bisher nicht als skalare Attribute aus.
+- Änderung `wlan_device_attributes.py`: explizite Whitelist für tatsächlich beobachtete `wifi_standard`, `stream_count`, `phy_mode`, `wifi_mode`, `wlan_mode`, `channel_width` und `frequency_band` aus den bestehenden Rohmetadaten. Ausgabe erhält `field`, `value`, `source`, `observed_at` sowie `raw_scope` (link/interface/channel). Keine Ableitung von Wi-Fi 4, 2,4 GHz, 20 MHz oder Streamzahl aus Kanal/Raten.
+- `tests/test_wlan_device_attributes.py` erweitert: gezielte positive Tests für tatsächlich vorhandene Funkfelder, Quell-/Zeitstempel-/Scope-Erhalt, Ausschluss anderer Rohdaten und Negativtest gegen erfundene Band-/Standardangaben bei Kanal 1.
+- **Tests/CI des neuen Branches noch nicht bestätigt.** Der vorangegangene PR #35 ist bereits gemergt und in HA getestet; die neue Erweiterung ist separat.
+- **Nächster Schritt:** GitHub-Tests prüfen, reale Mesh-Diagnose auf Verfügbarkeit dieser Funkfelder untersuchen, dann bei Bedarf weitere Änderungen bündeln. Kein HA-Neustart allein für diesen Commit.
