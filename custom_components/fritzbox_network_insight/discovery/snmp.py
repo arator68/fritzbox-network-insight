@@ -10,6 +10,7 @@ from typing import Any
 from . import DiscoveryEvidence
 from .lldp import async_read_lldp
 from .fdb import async_read_fdb
+from .port_telemetry import async_read_port_telemetry
 
 SYS_DESCR = "1.3.6.1.2.1.1.1.0"
 SYS_OBJECT_ID = "1.3.6.1.2.1.1.2.0"
@@ -86,9 +87,10 @@ class SnmpDiscoveryAdapter:
                 values = {str(oid): str(value) for oid, value in var_binds}
                 if not values:
                     return None
-                neighbors, fdb = await asyncio.gather(
+                neighbors, fdb, ports = await asyncio.gather(
                     async_read_lldp(engine, user, target),
                     async_read_fdb(engine, user, target),
+                    async_read_port_telemetry(engine, user, target),
                 )
             finally:
                 engine.close_dispatcher()
@@ -102,9 +104,15 @@ class SnmpDiscoveryAdapter:
                 "fdb_source": fdb["source"],
                 "fdb_raw_port_count": str(fdb["raw_port_count"]),
                 "fdb_raw_status_count": str(fdb["raw_status_count"]),
+                "fdb_status_summary": json.dumps(fdb.get("status_summary", {})),
                 "fdb_entry_count": str(fdb["count"]),
                 "fdb_truncated": str(fdb["truncated"]).lower(),
                 "fdb_entries": json.dumps(fdb["entries"], ensure_ascii=False),
+                "port_telemetry_status": ports["status"],
+                "port_telemetry_reason": ports.get("reason", ""),
+                "port_telemetry_columns": json.dumps(ports.get("columns", {})),
+                "port_telemetry_count": str(len(ports["ports"])),
+                "port_telemetry": json.dumps(ports["ports"], ensure_ascii=False),
             }
             return DiscoveryEvidence(source="snmp_v3", protocol="snmp")
         except Exception:

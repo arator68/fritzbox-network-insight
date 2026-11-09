@@ -5,6 +5,7 @@ Only observed, usable values are represented; competing sources are retained.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
@@ -136,6 +137,7 @@ SNMP_SUMMARY_FIELDS = {
     "lldp_neighbor_count": "lldp_neighbor_count",
     "fdb_entry_count": "fdb_entry_count",
     "fdb_raw_port_count": "fdb_raw_port_count",
+    "fdb_raw_status_count": "fdb_raw_status_count",
     "fdb_status": "fdb_status",
     "fdb_truncated": "fdb_truncated",
 }
@@ -153,6 +155,63 @@ def add_snmp_details(
             key, discovery.get(raw_key), source="snmp_v3",
             observed_at=observed_at,
         )
+
+
+    try:
+        fdb_summary = json.loads(discovery.get("fdb_status_summary", "{}"))
+    except (TypeError, ValueError):
+        fdb_summary = {}
+    if isinstance(fdb_summary, dict) and fdb_summary:
+        details.add(
+            "fdb_status_summary", fdb_summary,
+            source="snmp_v3", observed_at=observed_at,
+        )
+
+    # Per-port IF-MIB data belongs to the SNMP-managed switch itself.
+    # It is not evidence of a direct connection to any learned FDB MAC.
+    details.add(
+        "snmp_port_telemetry_status",
+        discovery.get("port_telemetry_status"),
+        source="snmp_v3",
+        observed_at=observed_at,
+    )
+    details.add(
+        "snmp_port_telemetry_reason",
+        discovery.get("port_telemetry_reason"),
+        source="snmp_v3",
+        observed_at=observed_at,
+    )
+    try:
+        column_status = json.loads(discovery.get("port_telemetry_columns", "{}"))
+    except (TypeError, ValueError):
+        column_status = {}
+    if isinstance(column_status, dict) and column_status:
+        details.add(
+            "snmp_port_telemetry_columns", column_status,
+            source="snmp_v3", observed_at=observed_at,
+        )
+    if discovery.get("port_telemetry_status") == "ok":
+        try:
+            ports = json.loads(discovery.get("port_telemetry", "[]"))
+        except (TypeError, ValueError):
+            ports = []
+        if isinstance(ports, list):
+            for port in ports[:128]:
+                if not isinstance(port, dict):
+                    continue
+                if not isinstance(port.get("if_index"), int) or not isinstance(
+                    port.get("interface_name"), str
+                ):
+                    continue
+                details.add(
+                    "snmp_port_telemetry",
+                    {key: port[key] for key in (
+                        "if_index", "interface_name", "reported_speed_mbps",
+                        "speed_source", "oper_status",
+                    ) if key in port},
+                    source="snmp_v3_if_mib",
+                    observed_at=observed_at,
+                )
 
 
 def add_mesh_link_details(
