@@ -42,6 +42,9 @@ class TestMeshWlanDetails(unittest.TestCase):
         self.assertEqual(payload, original)
         radio = data["20:6E:F1:02:62:D8"][0]
         self.assertEqual(radio["mesh_rx_rcpi_raw"], -55)
+        self.assertTrue(radio["mesh_rate_link_owner_is_node_1"])
+        self.assertFalse(radio["mesh_rate_client_is_node_1"])
+        self.assertFalse(radio["mesh_rate_link_has_source_target"])
         self.assertEqual(radio["mesh_rate_rx_kbps"], 86000)
         self.assertEqual(radio["mesh_wifi_channel"], 11)
         self.assertEqual(radio["wifi_rate_rx_mbps"], 86)
