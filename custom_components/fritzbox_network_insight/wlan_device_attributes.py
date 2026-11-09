@@ -47,12 +47,18 @@ def wlan_details_attribute(details: DeviceDetails | None, interface_type: Any) -
             value = observation.value
             if not isinstance(value, (str, int, float, bool)):
                 continue
-            observations.append({
+            row = {
                 "field": key,
                 "value": value,
                 "source": observation.source,
                 "observed_at": observation.observed_at,
-            })
+            }
+            if key == "wifi_channel_width":
+                # TR-064 WLAN device list: not interchangeable with Mesh radio width.
+                row["measurement_scope"] = "tr064_wlan_device"
+            elif key == "mesh_wifi_channel_width_raw":
+                row["measurement_scope"] = "mesh_radio_channel"
+            observations.append(row)
     # Only publish radio metadata that AVM actually supplied for this endpoint.
     # Keep raw field names, provenance and timestamp; do not synthesize Wi-Fi 4,
     # 2.4 GHz, 20 MHz or stream counts from other measurements.
@@ -67,12 +73,14 @@ def wlan_details_attribute(details: DeviceDetails | None, interface_type: Any) -
                     continue
                 if isinstance(value, str) and (not value.strip() or len(value) > 64):
                     continue
+                scope = key.removeprefix("mesh_wlan_").removesuffix("_radio_fields")
                 observations.append({
-                    "field": field,
+                    "field": "mesh_radio_channel_width" if field == "channel_width" and scope == "channel" else field,
                     "value": value,
                     "source": observation.source,
                     "observed_at": observation.observed_at,
-                    "raw_scope": key.removeprefix("mesh_wlan_").removesuffix("_radio_fields"),
+                    "raw_scope": scope,
+                    **({"measurement_scope": "mesh_radio_channel"} if field == "channel_width" and scope == "channel" else {}),
                 })
     # Mesh peer is a reported MAC, not necessarily a confirmed physical AP.
     for observation in details.values("mesh_reported_link"):
