@@ -98,6 +98,17 @@ def build_combined_topology(
         if not nodes[mac]["name"] and node.get("name"):
             nodes[mac]["name"] = str(node["name"])
         nodes[mac]["mesh_role"] = node.get("mesh_role")
+        # Only a Mesh master is unambiguously a router. A Mesh slave
+        # can be a repeater or a second FRITZ!Box; both act as an
+        # access point, but the role alone cannot distinguish models.
+        # Never overwrite an existing manually/protocol-classified type.
+        role = str(node.get("mesh_role") or "").strip().lower()
+        if not nodes[mac].get("device_type") and role in ("master", "slave"):
+            nodes[mac]["device_type"] = (
+                "router" if role == "master" else "access_point"
+            )
+            nodes[mac]["device_type_source"] = "avm_mesh_role"
+            nodes[mac]["device_type_confidence"] = "detected"
     for link in mesh.get("links", []):
         if not isinstance(link, dict):
             continue
