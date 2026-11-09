@@ -107,7 +107,60 @@ async def async_setup_entry(
             async_add_entities(new_entities)
 
     entry.async_on_unload(coordinator.async_add_listener(_add_new_hosts))
-\n\ndef _is_wlan(host: dict[str, Any] | None) -> bool:\n    return str((host or {}).get("interface_type") or "").strip().lower() in {"802.11", "wlan", "wifi", "wi-fi"}\n\n\nclass FritzBoxWlanMetricSensor(\n    CoordinatorEntity[FritzBoxDataUpdateCoordinator], SensorEntity\n):\n    """A numeric WLAN measurement, retaining its original provenance."""\n\n    _attr_has_entity_name = True\n    _attr_icon = "mdi:wifi"\n\n    def __init__(self, coordinator: FritzBoxDataUpdateCoordinator, mac: str, metric: str) -> None:\n        super().__init__(coordinator)\n        self._mac = mac\n        self._metric = metric\n        compact_mac = mac.replace(":", "").lower()\n        self._attr_unique_id = f"host_{compact_mac}_wlan_{metric}"\n        self.entity_id = f"sensor.fritzbox_network_insight_{compact_mac}_wlan_{metric}"\n        self._attr_translation_key = f"wlan_{metric}"\n        self._attr_native_unit_of_measurement = WLAN_METRICS[metric][2]\n        self._attr_device_info = DeviceInfo(\n            identifiers={(DOMAIN, mac)}, connections={("mac", mac)},\n        )\n\n    @property\n    def _observation(self) -> dict[str, Any] | None:\n        host = (self.coordinator.data or {}).get(self._mac)\n        if not _is_wlan(host) or host.get("active") is not True:\n            return None\n        details = self.coordinator.device_details.get(self._mac)\n        if details is None:\n            return None\n        return metric_observation(wlan_details_attribute(details, host.get("interface_type")), self._metric)\n\n    @property\n    def available(self) -> bool:\n        return super().available and self._observation is not None\n\n    @property\n    def native_value(self) -> int | float | None:\n        observation = self._observation\n        return observation["value"] if observation else None\n\n    @property\n    def extra_state_attributes(self) -> dict[str, Any]:\n        observation = self._observation\n        if observation is None:\n            return {}\n        return {key: value for key, value in observation.items() if key != "value"}\n\n
+
+
+def _is_wlan(host: dict[str, Any] | None) -> bool:
+    return str((host or {}).get("interface_type") or "").strip().lower() in {"802.11", "wlan", "wifi", "wi-fi"}
+
+
+class FritzBoxWlanMetricSensor(
+    CoordinatorEntity[FritzBoxDataUpdateCoordinator], SensorEntity
+):
+    """A numeric WLAN measurement, retaining its original provenance."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:wifi"
+
+    def __init__(self, coordinator: FritzBoxDataUpdateCoordinator, mac: str, metric: str) -> None:
+        super().__init__(coordinator)
+        self._mac = mac
+        self._metric = metric
+        compact_mac = mac.replace(":", "").lower()
+        self._attr_unique_id = f"host_{compact_mac}_wlan_{metric}"
+        self.entity_id = f"sensor.fritzbox_network_insight_{compact_mac}_wlan_{metric}"
+        self._attr_translation_key = f"wlan_{metric}"
+        self._attr_native_unit_of_measurement = WLAN_METRICS[metric][2]
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, mac)}, connections={("mac", mac)},
+        )
+
+    @property
+    def _observation(self) -> dict[str, Any] | None:
+        host = (self.coordinator.data or {}).get(self._mac)
+        if not _is_wlan(host) or host.get("active") is not True:
+            return None
+        details = self.coordinator.device_details.get(self._mac)
+        if details is None:
+            return None
+        return metric_observation(wlan_details_attribute(details, host.get("interface_type")), self._metric)
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._observation is not None
+
+    @property
+    def native_value(self) -> int | float | None:
+        observation = self._observation
+        return observation["value"] if observation else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        observation = self._observation
+        if observation is None:
+            return {}
+        return {key: value for key, value in observation.items() if key != "value"}
+
+
 class FritzBoxDeviceCountSensor(
     CoordinatorEntity[FritzBoxDataUpdateCoordinator], SensorEntity
 ):
