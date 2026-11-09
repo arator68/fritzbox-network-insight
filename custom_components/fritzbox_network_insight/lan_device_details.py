@@ -11,6 +11,32 @@ from .device import normalize_mac
 from .device_details import DeviceDetails
 
 
+def _observed_access(details: DeviceDetails) -> tuple[str, str | None]:
+    """Classify the endpoint from its own observations, never its FDB path."""
+    types = {
+        str(item.value).strip().lower()
+        for item in details.values("interface_type")
+        if isinstance(item.value, str)
+    }
+    wlan = bool(types & {"802.11", "wlan", "wifi", "wi-fi"})
+    ethernet = bool(types & {"ethernet", "lan"})
+    if wlan and ethernet:
+        return "unknown", None
+    if wlan:
+        peers = {
+            peer
+            for item in details.values("mesh_reported_link")
+            if isinstance(item.value, Mapping)
+            and str(item.value.get("link_type", "")).upper() == "WLAN"
+            and str(item.value.get("link_state", "")).upper() == "CONNECTED"
+            if (peer := normalize_mac(item.value.get("peer_mac"))) is not None
+        }
+        return "wlan", next(iter(peers)) if len(peers) == 1 else None
+    if ethernet:
+        return "ethernet", None
+    return "unknown", None
+
+
 def add_lan_port_details(
     devices: Mapping[str, DeviceDetails],
     discovery_results: Mapping[str, Mapping[str, Any]],
@@ -49,6 +75,7 @@ def add_lan_port_details(
             name = observation.get("interface_name")
             if name and name != port["interface_name"]:
                 continue
+            access, access_peer = _observed_access(devices[target])
             value = {
                 "switch_mac": source,
                 "if_index": port["if_index"],
@@ -57,10 +84,15 @@ def add_lan_port_details(
                 "vlan_id": observation.get("vlan_id"),
                 "connection": "reachable_via_port",
                 "evidence": "fdb",
+                "endpoint_access": access,
+                "direct_connection": "unknown",
             }
+            if access_peer is not None:
+                value["wlan_peer_mac"] = access_peer
+            # This is the speed of the switch interface, never the endpoint.
             for key in ("reported_speed_mbps", "speed_source", "oper_status"):
                 if key in port:
-                    value[key] = port[key]
+                    value["switch_port_" + key] = port[key]
             devices[target].add(
                 "lan_switch_port",
                 value,
