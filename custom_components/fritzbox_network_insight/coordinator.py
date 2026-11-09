@@ -20,7 +20,10 @@ from .discovery import DiscoveryManager
 from .discovery.snmp import SnmpDiscoveryAdapter
 from .mac_vendor import lookup_mac_vendor
 from .mesh import fetch_mesh, parse_mesh
-from .device_details import DeviceDetails, details_from_host
+from .device_details import (
+    DeviceDetails, details_from_host, add_snmp_details,
+    add_mesh_link_details, add_lldp_link_details,
+)
 from .snmp_device_classifier import classify_snmp_system
 from .identification_store import IdentificationStore
 from .topology.lldp_matcher import match_lldp_neighbors
@@ -464,6 +467,10 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self.device_details = {
             mac: details_from_host(host) for mac, host in indexed.items()
         }
+        for mac, details in self.device_details.items():
+            add_snmp_details(details, self.discovery_results.get(mac))
+            add_mesh_link_details(details, self.mesh_topology.get("links", []))
+            add_lldp_link_details(details, self.topology_observations)
         _LOGGER.info("FRITZ!Box host scan completed: %d device(s) found", len(indexed))
         for host in indexed.values():
             _LOGGER.debug(
