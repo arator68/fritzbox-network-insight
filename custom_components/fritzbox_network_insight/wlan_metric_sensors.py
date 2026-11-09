@@ -20,26 +20,44 @@ WLAN_METRICS = {
 
 
 def metric_observation(rows: list[dict[str, Any]], metric: str) -> dict[str, Any] | None:
-    """Find an actual measurement, without deriving or merging radio scopes."""
+    """Select a valid measurement with its actual source and measurement scope."""
     field, scope, _unit = WLAN_METRICS[metric]
-    for row in rows:
-        if row.get("field") != field:
-            continue
-        if scope is not None and row.get("measurement_scope") != scope:
-            continue
-        value = row.get("value")
-        if metric in ("mesh_channel_width", "mesh_peer_channel_width") and isinstance(value, str):
-            match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*MHz\s*", value)
-            if not match:
+    candidates = {
+        "channel": ((field, scope), ("mesh_peer_interface_channel", None), ("mesh_wifi_channel", None)),
+        "channel_width": ((field, scope), ("mesh_peer_interface_channel_width_raw", None)),
+        "signal_strength": ((field, scope), ("mesh_rx_rcpi_raw", None)),
+    }.get(metric, ((field, scope),))
+    for candidate_field, candidate_scope in candidates:
+        for row in rows:
+            if row.get("field") != candidate_field:
                 continue
-            value = float(match.group(1))
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            continue
-        if metric in ("channel_width", "mesh_channel_width", "mesh_peer_channel_width") and value <= 0:
-            continue
-        if metric in ("channel", "mesh_channel") and not 1 <= value <= 233:
-            continue
-        if metric in ("mesh_signal_rx_raw", "mesh_signal_tx_raw") and value == 255:
-            continue
-        return {"value": value, "source": row.get("source"), "observed_at": row.get("observed_at"), **({"measurement_scope": scope} if scope else {})}
+            if candidate_scope is not None and row.get("measurement_scope") != candidate_scope:
+                continue
+            value = row.get("value")
+            if metric in ("channel_width", "mesh_channel_width", "mesh_peer_channel_width") and isinstance(value, str):
+                match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*MHz\s*", value)
+                if not match:
+                    continue
+                value = float(match.group(1))
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            if metric in ("channel_width", "mesh_channel_width", "mesh_peer_channel_width") and value <= 0:
+                continue
+            if metric in ("channel", "mesh_channel") and not 1 <= value <= 233:
+                continue
+            if candidate_field in ("mesh_rx_rcpi_raw", "mesh_tx_rcpi_raw") and value == 255:
+                continue
+            return {
+                "value": value,
+                "source": row.get("source"),
+                "observed_at": row.get("observed_at"),
+                "source_field": candidate_field,
+                "measurement_scope": row.get("measurement_scope") or (
+                    "mesh_peer_interface" if candidate_field.startswith("mesh_peer_")
+                    else "mesh_signal_raw" if candidate_field == "mesh_rx_rcpi_raw"
+                    else "mesh_radio" if candidate_field == "mesh_wifi_channel"
+                    else "tr064_wlan_device" if candidate_field.startswith("wifi_")
+                    else None
+                ),
+            }
     return None
