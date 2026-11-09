@@ -67,6 +67,33 @@ def fetch_wlan_devices(host: str, username: str, password: str, timeout: int = 1
     """Blocking optional AVM WLAN list fetch; invoke only in HA executor."""
     connection = FritzConnection(address=host, user=username, password=password, timeout=timeout)
     records: dict[str, dict] = {}
+    # Association membership provides the actual radio band for each MAC.
+    # The AVM WLANDeviceListPath response can contain clients across radios;
+    # its originating instance must not be treated as a band identifier.
+    mac_to_band: dict[str, int] = {}
+    for instance in (1, 2, 3, 4):
+        service = f"WLANConfiguration{instance}"
+        try:
+            info = connection.call_action(service, "GetInfo")
+            band_raw = str(info.get("NewX_AVM-DE_FrequencyBand") or "").strip()
+            band = int(band_raw) if band_raw in {"2400", "5000", "6000"} else None
+            total_response = connection.call_action(service, "GetTotalAssociations")
+            total = int(total_response.get("NewTotalAssociations") or 0)
+            if band is None:
+                continue
+            for index in range(min(max(total, 0), 512)):
+                try:
+                    association = connection.call_action(
+                        service, "GetGenericAssociatedDeviceInfo",
+                        NewAssociatedDeviceIndex=index,
+                    )
+                    mac = normalize_mac(association.get("NewAssociatedDeviceMACAddress"))
+                    if mac:
+                        mac_to_band[mac] = band
+                except (OSError, ValueError, KeyError):
+                    continue
+        except (OSError, ValueError, KeyError):
+            continue
     for instance in (1, 2, 3, 4):
         try:
             response = connection.call_action(
@@ -85,6 +112,8 @@ def fetch_wlan_devices(host: str, username: str, password: str, timeout: int = 1
             with opener.open(url, timeout=timeout) as stream:
                 values = parse_wlan_list(stream.read())
             for mac, properties in values.items():
+                if mac in mac_to_band:
+                    properties["wifi_frequency_band_mhz"] = mac_to_band[mac]
                 # Keep distinct per-instance observations; no inferred radio band.
                 records.setdefault(mac, {})[f"wlan_configuration_{instance}"] = properties
         except (OSError, ValueError, ElementTree.ParseError, KeyError):
