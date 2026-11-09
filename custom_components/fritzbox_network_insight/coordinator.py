@@ -76,6 +76,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self.mesh_topology: dict[str, Any] = {"nodes": [], "links": [], "aliases": {}}
         self._mesh_last_attempt: float = 0.0
         self._wlan_observations: dict[str, dict[str, dict[str, Any]]] = {}
+        self._wlan_last_attempt: float = 0.0
         self._snmp_last_attempt: float = 0.0
         self._snmp_scan_lock = asyncio.Lock()
         self._dns_cache: dict[str, tuple[float, str | None]] = {}
@@ -389,15 +390,18 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             raise UpdateFailed("Unexpected error while retrieving FRITZ!Box hosts") from err
 
         indexed = {host["mac"]: host for host in hosts}
-        # WLAN observations are optional and must never fail the host scan.
-        try:
-            wlan = await self.hass.async_add_executor_job(
-                fetch_wlan_devices, self.client.host, self.client.username,
-                self.client.password, self.client.timeout,
-            )
-            self._wlan_observations = wlan
-        except Exception:
-            _LOGGER.debug("Optional WLAN device list unavailable", exc_info=True)
+        # WLAN observations are optional, throttled and never fail the host scan.
+        now_wlan = monotonic()
+        if not self._wlan_last_attempt or now_wlan - self._wlan_last_attempt >= 300:
+            self._wlan_last_attempt = now_wlan
+            try:
+                wlan = await self.hass.async_add_executor_job(
+                    fetch_wlan_devices, self.client.host, self.client.username,
+                    self.client.password, self.client.timeout,
+                )
+                self._wlan_observations = wlan
+            except Exception:
+                _LOGGER.debug("Optional WLAN device list unavailable", exc_info=True)
         await self._async_refresh_snmp_topology(indexed)
         # Mesh refresh every 15 minutes; keep the last successful result.
         now_mesh = monotonic()
