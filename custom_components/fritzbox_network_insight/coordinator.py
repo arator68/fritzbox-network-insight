@@ -20,6 +20,12 @@ from .discovery import DiscoveryManager
 from .discovery.snmp import SnmpDiscoveryAdapter
 from .mac_vendor import lookup_mac_vendor
 from .mesh import fetch_mesh, parse_mesh
+from .mesh_wlan_details import extract_mesh_wlan_details
+from .wlan_details import fetch_wlan_devices
+from .device_details import (
+    DeviceDetails, details_from_host, add_snmp_details,
+    add_mesh_link_details, add_lldp_link_details, add_wlan_details,
+)
 from .snmp_device_classifier import classify_snmp_system
 from .identification_store import IdentificationStore
 from .topology.lldp_matcher import match_lldp_neighbors
@@ -53,6 +59,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self.client = client
         self.discovery_results: dict[str | None, dict[str, Any]] = {}
         self.device_identifications: dict[str, dict[str, str]] = {}
+        self.device_details: dict[str, DeviceDetails] = {}
         self.identification_store = IdentificationStore(hass, entry.entry_id)
         self.topology_store = TopologyStore(hass, entry.entry_id)
         self.fdb_topology_store = FdbTopologyStore(hass, entry.entry_id)
@@ -69,6 +76,11 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self.entry = entry
         self.mesh_topology: dict[str, Any] = {"nodes": [], "links": [], "aliases": {}}
         self._mesh_last_attempt: float = 0.0
+        self._mesh_wlan_details: dict[str, list[dict[str, Any]]] = {}
+        self._mesh_wlan_observed_at: str | None = None
+        self._wlan_observations: dict[str, dict[str, dict[str, Any]]] = {}
+        self._wlan_observed_at: str | None = None
+        self._wlan_last_attempt: float = 0.0
         self._snmp_last_attempt: float = 0.0
         self._snmp_scan_lock = asyncio.Lock()
         self._dns_cache: dict[str, tuple[float, str | None]] = {}
@@ -382,6 +394,19 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             raise UpdateFailed("Unexpected error while retrieving FRITZ!Box hosts") from err
 
         indexed = {host["mac"]: host for host in hosts}
+        # WLAN observations are optional, throttled and never fail the host scan.
+        now_wlan = monotonic()
+        if not self._wlan_last_attempt or now_wlan - self._wlan_last_attempt >= 300:
+            self._wlan_last_attempt = now_wlan
+            try:
+                wlan = await self.hass.async_add_executor_job(
+                    fetch_wlan_devices, self.client.host, self.client.username,
+                    self.client.password, self.client.timeout,
+                )
+                self._wlan_observations = wlan
+                self._wlan_observed_at = datetime.now(timezone.utc).isoformat()
+            except Exception:
+                _LOGGER.debug("Optional WLAN device list unavailable", exc_info=True)
         await self._async_refresh_snmp_topology(indexed)
         # Mesh refresh every 15 minutes; keep the last successful result.
         now_mesh = monotonic()
@@ -392,7 +417,12 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                     fetch_mesh, self.client.host, self.client.username,
                     self.client.password, self.client.timeout,
                 )
-                self.mesh_topology = parse_mesh(payload, indexed)
+                parsed_mesh = parse_mesh(payload, indexed)
+                self._mesh_wlan_details = extract_mesh_wlan_details(
+                    payload, parsed_mesh.get("aliases", {})
+                )
+                self.mesh_topology = parsed_mesh
+                self._mesh_wlan_observed_at = datetime.now(timezone.utc).isoformat()
             except Exception as err:
                 _LOGGER.warning("AVM Mesh refresh failed; retaining previous data: %s", err)
         mesh_nodes = {node["mac"]: node for node in self.mesh_topology.get("nodes", [])}
@@ -457,6 +487,25 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             if identification and host.get("device_type_source") == "snmp_sys_object_id":
                 host["device_type_confidence"] = identification["device_type_confidence"]
             host.update(lookup_mac_vendor(host.get('mac')))
+        # Publish only successfully assembled detail snapshots after enrichment.
+        # These are internal observations; entity creation is intentionally separate.
+        self.device_details = {
+            mac: details_from_host(host) for mac, host in indexed.items()
+        }
+        for mac, details in self.device_details.items():
+            add_snmp_details(details, self.discovery_results.get(mac))
+            add_mesh_link_details(details, self.mesh_topology.get("links", []))
+            add_lldp_link_details(details, self.topology_observations)
+            add_wlan_details(
+                details, self._wlan_observations.get(mac),
+                observed_at=self._wlan_observed_at,
+            )
+            for radio in self._mesh_wlan_details.get(mac, []):
+                for key, value in radio.items():
+                    details.add(
+                        key, value, source="avm_mesh_radio",
+                        observed_at=self._mesh_wlan_observed_at,
+                    )
         _LOGGER.info("FRITZ!Box host scan completed: %d device(s) found", len(indexed))
         for host in indexed.values():
             _LOGGER.debug(
