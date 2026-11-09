@@ -17,7 +17,9 @@ from homeassistant.helpers import device_registry as dr
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
 from .device_classifier import classify_device
 from .discovery import DiscoveryManager
+from .discovery.snmp import SnmpDiscoveryAdapter
 from .mac_vendor import lookup_mac_vendor
+from .mesh import fetch_mesh, parse_mesh
 from .snmp_device_classifier import classify_snmp_system
 from .identification_store import IdentificationStore
 from .topology.lldp_matcher import match_lldp_neighbors
@@ -26,6 +28,9 @@ from .topology.store import TopologyStore
 from .topology.fdb_model import build_fdb_observations
 from .topology.fdb_store import FdbTopologyStore
 from .topology.combined import build_combined_topology
+from .topology.internal_graph import build_internal_graph
+from .topology.manual_store import ManualTopologyStore, sanitize_links
+from .topology.port_history import PortHistoryStore, merge_port_history
 from .dns import resolve_dns_name
 from .fritzbox_client import (
     FritzBoxAuthenticationError,
@@ -51,12 +56,21 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self.identification_store = IdentificationStore(hass, entry.entry_id)
         self.topology_store = TopologyStore(hass, entry.entry_id)
         self.fdb_topology_store = FdbTopologyStore(hass, entry.entry_id)
+        self.manual_topology_store = ManualTopologyStore(hass, entry.entry_id)
+        self.port_history_store = PortHistoryStore(hass, entry.entry_id)
+        self.port_history: list[dict[str, str]] = []
+        self.manual_links: list[dict[str, str]] = []
+        self._manual_links_lock = asyncio.Lock()
         self.fdb_observations: dict[str, list[dict[str, str | None]]] = {}
         self.topology_observations: dict[str, list[dict[str, Any]]] = {}
         self._topology_save_lock = asyncio.Lock()
         self._identification_save_lock = asyncio.Lock()
         self._discovery = DiscoveryManager()
         self.entry = entry
+        self.mesh_topology: dict[str, Any] = {"nodes": [], "links": [], "aliases": {}}
+        self._mesh_last_attempt: float = 0.0
+        self._snmp_last_attempt: float = 0.0
+        self._snmp_scan_lock = asyncio.Lock()
         self._dns_cache: dict[str, tuple[float, str | None]] = {}
         self._dns_semaphore = asyncio.Semaphore(4)
         super().__init__(
@@ -88,6 +102,61 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             _LOGGER.exception("Could not load saved FDB topology")
             self.fdb_observations = {}
 
+    async def async_load_port_history(self) -> None:
+        """Restore last-seen port records without claiming devices are online."""
+        try:
+            self.port_history = await self.port_history_store.async_load()
+        except Exception:
+            _LOGGER.exception("Could not load saved port history")
+            self.port_history = []
+
+    async def async_load_manual_links(self) -> None:
+        """Restore explicitly confirmed physical connections."""
+        self.manual_links = await self.manual_topology_store.async_load()
+
+    async def async_set_manual_link(
+        self, source_mac: str, target_mac: str, *,
+        bridge_port: str = "", vlan_id: str = "",
+    ) -> list[dict[str, str]]:
+        """Persist an explicit physical confirmation, atomically per entry."""
+        candidate = sanitize_links([{
+            "source_mac": source_mac, "target_mac": target_mac,
+            "bridge_port": bridge_port, "vlan_id": vlan_id,
+            "confirmation": "user_confirmed",
+        }])
+        if not candidate:
+            raise ValueError("Invalid manual link")
+        link = candidate[0]
+        async with self._manual_links_lock:
+            new_links = [
+                old for old in self.manual_links
+                if frozenset((old["source_mac"], old["target_mac"]))
+                != frozenset((link["source_mac"], link["target_mac"]))
+            ] + [link]
+            if len(new_links) > 128:
+                raise ValueError("Too many manually confirmed links")
+            await self.manual_topology_store.async_save(new_links)
+            self.manual_links = new_links
+        return list(self.manual_links)
+
+    async def async_delete_manual_link(
+        self, source_mac: str, target_mac: str
+    ) -> list[dict[str, str]]:
+        """Remove one confirmation by its stable MAC pair."""
+        from .topology.lldp_matcher import normalize_mac
+        source, target = normalize_mac(source_mac), normalize_mac(target_mac)
+        if not source or not target or source == target:
+            raise ValueError("Invalid MAC pair")
+        async with self._manual_links_lock:
+            new_links = [
+                old for old in self.manual_links
+                if frozenset((old["source_mac"], old["target_mac"]))
+                != frozenset((source, target))
+            ]
+            await self.manual_topology_store.async_save(new_links)
+            self.manual_links = new_links
+        return list(self.manual_links)
+
     def get_fdb_snapshot(self) -> dict[str, Any]:
         """Expose last-observed MAC reachability separately from LLDP links."""
         observations = [
@@ -109,7 +178,15 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             self.topology_observations,
             self.fdb_observations,
             self.data or {},
+            self.mesh_topology,
         )
+
+    def get_internal_topology_graph(self) -> dict[str, Any]:
+        """Build the full internal graph without exposing it as sensor attributes."""
+        snapshot = self.get_combined_topology_snapshot()
+        snapshot["manual_links"] = list(self.manual_links)
+        snapshot["port_history"] = list(self.port_history)
+        return build_internal_graph(snapshot)
 
     def get_topology_snapshot(self) -> dict[str, Any]:
         """Provide a single, dashboard-ready topology data model."""
@@ -223,6 +300,18 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         if fdb_changed:
             async with self._topology_save_lock:
                 try:
+                    # A complete SNMP FDB walk is evidence of observation,
+                    # not proof of a direct cable or current online status.
+                    updated = merge_port_history(
+                        self.port_history, self.fdb_observations.get(mac, [])
+                    )
+                    await self.port_history_store.async_save(updated)
+                    self.port_history = updated
+                except Exception:
+                    _LOGGER.exception("Could not persist port history")
+        if fdb_changed:
+            async with self._topology_save_lock:
+                try:
                     await self.fdb_topology_store.async_save(self.fdb_observations)
                 except Exception:
                     _LOGGER.exception("Could not persist FDB topology")
@@ -241,6 +330,41 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                 except Exception:
                     _LOGGER.exception("Could not persist device identification")
 
+    async def _async_refresh_snmp_topology(self, hosts: dict[str, dict[str, Any]]) -> None:
+        """Periodically refresh configured switches; never invent physical links.
+
+        Failed or incomplete walks preserve the last saved observations. The
+        configured SNMPv3 credentials are never logged or copied to diagnostics.
+        """
+        configured = self.entry.options.get("snmp_devices", {})
+        if not isinstance(configured, dict) or not configured:
+            return
+        now = monotonic()
+        if self._snmp_last_attempt and now - self._snmp_last_attempt < 300:
+            return
+        if self._snmp_scan_lock.locked():
+            return
+        async with self._snmp_scan_lock:
+            self._snmp_last_attempt = monotonic()
+            adapter = SnmpDiscoveryAdapter(configured)
+            for mac in sorted(configured):
+                host = hosts.get(mac)
+                if not host:
+                    continue
+                try:
+                    evidence = await asyncio.wait_for(adapter.async_discover(host), timeout=15)
+                    if evidence is None:
+                        continue
+                    details = adapter.results.get(mac, {})
+                    if details.get("fdb_status") != "ok" or details.get("fdb_truncated") != "false":
+                        continue
+                    await self.async_record_manual_discovery(
+                        mac, status="responded", requested=1, checked=1,
+                        protocols=("snmp",), details=details,
+                    )
+                except Exception:
+                    _LOGGER.warning("Automatic SNMP topology refresh failed for %s", mac)
+
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         """Fetch hosts in the executor and index them by stable MAC address."""
         try:
@@ -258,6 +382,30 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             raise UpdateFailed("Unexpected error while retrieving FRITZ!Box hosts") from err
 
         indexed = {host["mac"]: host for host in hosts}
+        await self._async_refresh_snmp_topology(indexed)
+        # Mesh refresh every 15 minutes; keep the last successful result.
+        now_mesh = monotonic()
+        if not self._mesh_last_attempt or now_mesh - self._mesh_last_attempt >= 900:
+            self._mesh_last_attempt = now_mesh
+            try:
+                payload = await self.hass.async_add_executor_job(
+                    fetch_mesh, self.client.host, self.client.username,
+                    self.client.password, self.client.timeout,
+                )
+                self.mesh_topology = parse_mesh(payload, indexed)
+            except Exception as err:
+                _LOGGER.warning("AVM Mesh refresh failed; retaining previous data: %s", err)
+        mesh_nodes = {node["mac"]: node for node in self.mesh_topology.get("nodes", [])}
+        for mac, host in indexed.items():
+            canonical = self.mesh_topology.get("aliases", {}).get(mac, mac)
+            node = mesh_nodes.get(canonical)
+            if node:
+                host["mesh_role"] = node.get("mesh_role")
+                host["mesh_node_uid"] = node.get("uid")
+                host["mesh_identity_mac"] = canonical
+                if str(node.get("mesh_role") or "").lower() == "slave":
+                    host["device_manufacturer"] = "AVM"
+
         # DNS is optional metadata: lookup failures never fail the FRITZ!Box scan.
         # Cache positive and negative results for 15 minutes per IP address.
         addresses = {

@@ -41,3 +41,9 @@ Feature branches are reviewed through pull requests targeting `develop`. Only ap
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE).
+
+### Language support and existing entity names
+
+FRITZ!Box Network Insight provides German and English translations for entity names and enum states via Home Assistant's native `translation_key` mechanism. **Entity names are resolved in the Home Assistant backend language when the entity is first registered.** Changing only a user's frontend/profile language does not rename already registered entities; this is Home Assistant's documented behavior. Translated enum states (for example, `not_started`) can still appear in the selected frontend language.
+
+To verify translated names for newly created entities, set the **Home Assistant system language** before creating them. Existing entity names and entity IDs are deliberately not rewritten by this integration: user customizations and automation references must remain intact. Do not delete or recreate entities merely to test a language switch.

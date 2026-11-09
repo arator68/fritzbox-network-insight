@@ -18,5 +18,45 @@
     "abort": {
       "already_configured": "This FRITZ!Box is already configured."
     }
+  },
+  "entity": {
+    "button": {
+      "manual_discovery": {
+        "name": "Start device discovery"
+      }
+    },
+    "sensor": {
+      "device_count": {
+        "name": "Discovered devices"
+      },
+      "lldp_topology": {
+        "name": "LLDP topology"
+      },
+      "fdb_topology": {
+        "name": "FDB port mapping"
+      },
+      "combined_topology": {
+        "name": "Network topology"
+      },
+      "host_status": {
+        "name": "Status",
+        "state": {
+          "online": "Online",
+          "offline": "Offline",
+          "unbekannt": "Unknown",
+          "nicht_gefunden": "Not found"
+        }
+      },
+      "manual_discovery_result": {
+        "name": "Device discovery result",
+        "state": {
+          "not_started": "Not started",
+          "responded": "Responded",
+          "no_response": "No response",
+          "no_targets": "No targets",
+          "no_adapters_configured": "No discovery adapters configured"
+        }
+      }
+    }
   }
 }

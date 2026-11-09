@@ -1,0 +1,27 @@
+topology_diagnostics:
+  name: Internal topology diagnostics
+  description: >-
+    Return the complete internally calculated network topology for diagnosis.
+    Read-only; does not create entities or modify network configuration.
+  fields:
+    entry_id:
+      name: Configuration entry ID
+      description: Optional ID of the FRITZ!Box Network Insight configuration entry.
+      required: false
+      example: "0123456789abcdef0123456789abcdef"
+      selector:
+        text:
+
+topology_view:
+  name: Network topology view
+  description: >-
+    Return MAC-identified nodes, confirmed LAN and Mesh WLAN edges,
+    and separate FDB branch memberships for a network map.
+    Read-only; unknown repeater uplinks are not inferred.
+  fields:
+    entry_id:
+      name: Configuration entry ID
+      description: Required when multiple FRITZ!Box entries are configured.
+      required: false
+      selector:
+        text:
