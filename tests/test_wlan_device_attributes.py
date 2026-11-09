@@ -55,14 +55,30 @@ class WlanDeviceAttributeTests(unittest.TestCase):
         }, source="avm_mesh_radio", observed_at="mesh-time")
         rows = formatter.wlan_details_attribute(details, "802.11")
         by_field = {row["field"]: row for row in rows}
-        for field in ("wifi_standard", "stream_count", "channel_width", "frequency_band"):
+        for field in ("wifi_standard", "stream_count", "mesh_radio_channel_width", "frequency_band"):
             self.assertEqual(by_field[field]["source"], "avm_mesh_radio")
             self.assertEqual(by_field[field]["observed_at"], "mesh-time")
         self.assertEqual(by_field["stream_count"]["value"], 1)
-        self.assertEqual(by_field["channel_width"]["value"], "20 MHz")
-        self.assertEqual(by_field["channel_width"]["raw_scope"], "channel")
+        self.assertEqual(by_field["mesh_radio_channel_width"]["value"], "20 MHz")
+        self.assertEqual(by_field["mesh_radio_channel_width"]["raw_scope"], "channel")
         self.assertNotIn("password", str(rows))
         self.assertNotIn("max_data_rate_rx", by_field)
+
+    def test_mesh_and_tr064_channel_widths_remain_distinct(self):
+        details = model.build_device_details("0C:EF:15:9B:EC:D0", {})
+        details.add("wifi_channel_width", 80, source="tr064_wlan_configuration_1", observed_at="tr-time")
+        details.add("mesh_wifi_channel_width_raw", "160 MHz", source="avm_mesh_radio", observed_at="mesh-time")
+        details.add("mesh_wlan_channel_radio_fields", {"channel_width": "160 MHz"}, source="avm_mesh_radio", observed_at="mesh-time")
+        rows = formatter.wlan_details_attribute(details, "802.11")
+        by_field = {row["field"]: row for row in rows}
+        self.assertEqual(by_field["wifi_channel_width"]["value"], 80)
+        self.assertEqual(by_field["wifi_channel_width"]["measurement_scope"], "tr064_wlan_device")
+        self.assertEqual(by_field["mesh_radio_channel_width"]["value"], "160 MHz")
+        self.assertEqual(by_field["mesh_radio_channel_width"]["measurement_scope"], "mesh_radio_channel")
+        self.assertEqual(by_field["mesh_wifi_channel_width_raw"]["measurement_scope"], "mesh_radio_channel")
+        self.assertEqual(by_field["mesh_radio_channel_width"]["observed_at"], "mesh-time")
+        self.assertEqual(by_field["wifi_channel_width"]["observed_at"], "tr-time")
+        self.assertNotIn("channel_width", by_field)
 
     def test_missing_radio_metadata_is_not_guessed_from_channel(self):
         details = model.build_device_details("00:4B:12:69:4D:2C", {})
