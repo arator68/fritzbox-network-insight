@@ -94,6 +94,22 @@ def extract_mesh_wlan_details(
                     value = link.get(source)
                     if isinstance(value, (int, float)) and not isinstance(value, bool):
                         values[target] = value
+                # Mesh rates are kbit/s. Keep raw fields and expose clearly
+                # named Mbit/s values without changing topology or identities.
+                for source, target in (
+                    ("cur_data_rate_rx", "wifi_rate_rx_mbps"),
+                    ("cur_data_rate_tx", "wifi_rate_tx_mbps"),
+                    ("max_data_rate_rx", "wifi_rate_rx_max_mbps"),
+                    ("max_data_rate_tx", "wifi_rate_tx_max_mbps"),
+                ):
+                    rate = link.get(source)
+                    if isinstance(rate, (int, float)) and not isinstance(rate, bool) and rate >= 0:
+                        values[target] = round(rate / 1000, 3)
+                # Preserve the AVM mesh signal separately, with no unverified
+                # assumption that RCPI values have a dBm unit.
+                signal = link.get("rx_rcpi")
+                if isinstance(signal, (int, float)) and not isinstance(signal, bool) and signal != 255:
+                    values["wifi_mesh_signal_rx_raw"] = signal
                 channel = interface.get("current_channel")
                 if isinstance(channel, int) and channel > 0:
                     values["mesh_wifi_channel"] = channel
