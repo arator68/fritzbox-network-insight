@@ -1,10 +1,10 @@
 # Entwicklungsstand – FRITZ!Box Network Insight
 
 **Stand:** 2026-11-09 (fortlaufend aktualisiert; ältere Abschnitte als historische Momentaufnahme erhalten)  
-**Status:** Laufende Entwicklung; keine Release- oder Merge-Freigabe  
+**Status:** Laufende Entwicklung; PR #38 nach `develop` übernommen, keine Freigabe für `main` oder ein Release  
 **Verbindliche Anforderungen:** [SPECIFICATION.md](SPECIFICATION.md)  
 **Repository:** https://github.com/arator68/fritzbox-network-insight  
-**Aktueller Arbeitsbranch:** `feature/wlan-radio-metadata` (von `develop`; noch kein PR)  
+**Aktueller Stand:** `develop`; WLAN-Metriksensoren aus PR #38 gemergt (09.11.2026). Frühere Branch-Angaben in den Abschnitten unten sind historische Zwischenstände.  
 **Historischer Pull Request:** [#32 – Add automatic AVM Mesh observations to Network Insight](https://github.com/arator68/fritzbox-network-insight/pull/32) → `develop` (Status in Abschnitt 1 ist historisch und nicht der aktuelle Arbeitsauftrag)
 
 > **Zweck:** Diese Datei dokumentiert den tatsächlichen Arbeitsstand und die nächsten Schritte für die Fortsetzung in einem neuen Chat. Sie ergänzt die Spezifikation, ersetzt sie nicht. Angaben aus dem früheren Chat sind als solche gekennzeichnet; sie sind nicht automatisch durch CI oder Quellcode verifiziert.
@@ -239,3 +239,10 @@ Server-3
 - **CI:** GitHub-Checks für PR-Head `ff037b74` (`Static validation`) erfolgreich. **Topologie, MAC-Gerätezuordnung, LLDP, SNMP und physische Verbindungslogik wurden für diesen WLAN-Arbeitsabschnitt nicht verändert.**
 - **Restpunkte:** Interpretation von RX/TX gegenüber den Pfeilen der FRITZ!Box-Oberfläche nicht abschließend belegt; `WLAN-Sendesignal` noch ohne bestätigte Einheit; optionale Kanalbreiten können bei einzelnen Geräten fehlen. Keine Werte erfinden oder Richtungen vertauschen.
 - **Freigabe:** Nutzer hat am 09.11.2026 ausdrücklich das Zusammenführen von PR #38 nach `develop` und die Aktualisierung dieser Datei beauftragt. Merge-Status nach GitHub-Merge verifizieren.
+
+## 21. 2026-11-09 – PR #38 nach develop übernommen
+
+- [PR #38](https://github.com/arator68/fritzbox-network-insight/pull/38) wurde nach erfolgreichen GitHub-Checks (`Static validation`, beide `success`) und den dokumentierten HA-Praxistests erfolgreich nach `develop` gemergt.
+- **Merge-Commit:** `b9d5611cd91c15f4dfadbbb547b59eee03880e30`. `main` wurde nicht verändert.
+- Die in Abschnitt 20 beschriebene WLAN-Sensorbereinigung, quellenbewusste Fallbacks, Signalstärke mit bedingter Einheit dBm und die Mesh-Gegenstellenkanalbreite sind nun Bestandteil von `develop`.
+- **Nächster Einstieg:** Für neue Arbeiten von `develop` ausgehen. Offen bleiben die genaue RX-/TX-Richtungssemantik, die Einheit des separaten Sendesignals sowie weitere WLAN-Metadaten nur bei nachgewiesener AVM-Datenquelle. Topologie nicht ohne gesonderten Auftrag ändern.
