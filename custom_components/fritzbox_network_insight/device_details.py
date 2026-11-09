@@ -216,7 +216,9 @@ def add_wlan_details(
         return
     allowed = {
         "wifi_speed_mbps", "wifi_signal_strength", "wifi_channel",
-        "wifi_channel_width", "wifi_guest",
+        "wifi_channel_width", "wifi_guest", "wifi_speed_rx_mbps",
+        "wifi_speed_max_mbps", "wifi_speed_rx_max_mbps",
+        "wifi_frequency_band_mhz",
     }
     # Multiple WLANConfiguration services can return the same association.
     # Retain one copy of each identical measurement rather than three clones.
