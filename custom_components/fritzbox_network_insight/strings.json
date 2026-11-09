@@ -71,10 +71,10 @@
         "name": "Mesh radio channel width"
       },
       "wlan_rx_rate": {
-        "name": "WLAN receive rate (Mesh)"
+        "name": "WLAN Mesh rate RX (AVM raw field)"
       },
       "wlan_tx_rate": {
-        "name": "WLAN transmit rate (Mesh)"
+        "name": "WLAN Mesh rate TX (AVM raw field)"
       },
       "wlan_signal_strength": {
         "name": "WLAN signal strength (TR-064)"
