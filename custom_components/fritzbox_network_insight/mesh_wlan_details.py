@@ -85,6 +85,13 @@ def extract_mesh_wlan_details(
                     continue
                 seen.add(signature)
                 values: dict[str, Any] = {"peer_node_uid": node_uid}
+                # Endpoint orientation is diagnostic only; do not relabel rates
+                # as client download/upload without validated AVM semantics.
+                values["mesh_rate_link_owner_is_node_1"] = node_uid == a
+                values["mesh_rate_client_is_node_1"] = peer_uid == a
+                values["mesh_rate_link_has_source_target"] = (
+                    "source" in link and "target" in link
+                )
                 # Inspect the endpoint's own WLAN interface independently of
                 # the AP/repeater radio. A peer interface is accepted only
                 # when it explicitly references this very same Mesh link.
