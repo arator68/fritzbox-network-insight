@@ -29,6 +29,30 @@ class TestFdb(unittest.TestCase):
         self.assertEqual(rows[0]["vlan_id"], "1")
         self.assertEqual(rows[0]["interface_name"], "gigabitEthernet 1/0/3")
 
+    def test_enumerated_learned_status_and_summary(self) -> None:
+        suffix = "1.144.9.208.121.5.67"
+        rows = fdb.correlate_q_fdb(
+            [(suffix, "3")],
+            [(suffix, "learned(3)")],
+            [("3", "49155")],
+            [("49155", "gigabitEthernet 1/0/3")],
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["if_index"], "49155")
+        self.assertEqual(
+            fdb.status_summary([(suffix, "3")], [(suffix, "learned(3)")]),
+            {"status_missing": 0, "status_learned": 1, "status_other": 0},
+        )
+
+    def test_status_other_and_missing_are_not_treated_as_learned(self) -> None:
+        suffix = "1.144.9.208.121.5.67"
+        rows = [(suffix, "3")]
+        self.assertEqual(fdb.correlate_q_fdb(rows, [(suffix, "self(4)")], [], []), [])
+        self.assertEqual(fdb.correlate_q_fdb(rows, [("other", "3")], [], []), [])
+        self.assertEqual(
+            fdb.status_summary(rows, [("other", "3")])["status_missing"], 1
+        )
+
     def test_learned_only_and_bridge_mapping(self) -> None:
         suffix = "4.180.254.24.121.101"
         rows = fdb.correlate_fdb(
