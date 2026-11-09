@@ -20,6 +20,15 @@ _WLAN_KEYS = (
     "peer_node_uid",
 )
 
+# Mesh radio metadata is recorded as raw source-specific dictionaries. Only
+# explicitly named, scalar fields are surfaced; no band/standard inference.
+_MESH_RADIO_FIELDS = {
+    "mesh_wlan_link_radio_fields": ("wifi_standard", "stream_count", "phy_mode", "wifi_mode", "wlan_mode"),
+    "mesh_wlan_interface_radio_fields": ("wifi_standard", "stream_count", "phy_mode", "wifi_mode", "wlan_mode"),
+    "mesh_wlan_channel_radio_fields": ("channel_width", "frequency_band"),
+}
+
+
 
 def wlan_details_attribute(details: DeviceDetails | None, interface_type: Any) -> list[dict[str, Any]]:
     """Return only recorded WLAN facts, preserving competing sources and timestamps.
@@ -44,6 +53,27 @@ def wlan_details_attribute(details: DeviceDetails | None, interface_type: Any) -
                 "source": observation.source,
                 "observed_at": observation.observed_at,
             })
+    # Only publish radio metadata that AVM actually supplied for this endpoint.
+    # Keep raw field names, provenance and timestamp; do not synthesize Wi-Fi 4,
+    # 2.4 GHz, 20 MHz or stream counts from other measurements.
+    for key, allowed_fields in _MESH_RADIO_FIELDS.items():
+        for observation in details.values(key):
+            raw = observation.value
+            if not isinstance(raw, dict):
+                continue
+            for field in allowed_fields:
+                value = raw.get(field)
+                if not isinstance(value, (str, int, float, bool)):
+                    continue
+                if isinstance(value, str) and (not value.strip() or len(value) > 64):
+                    continue
+                observations.append({
+                    "field": field,
+                    "value": value,
+                    "source": observation.source,
+                    "observed_at": observation.observed_at,
+                    "raw_scope": key.removeprefix("mesh_wlan_").removesuffix("_radio_fields"),
+                })
     # Mesh peer is a reported MAC, not necessarily a confirmed physical AP.
     for observation in details.values("mesh_reported_link"):
         link = observation.value
