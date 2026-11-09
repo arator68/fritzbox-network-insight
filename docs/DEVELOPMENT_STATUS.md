@@ -1,11 +1,11 @@
 # Entwicklungsstand – FRITZ!Box Network Insight
 
-**Stand:** 2026-11-08 (rekonstruiert aus dem letzten Entwicklungsdialog und GitHub)  
+**Stand:** 2026-11-09 (fortlaufend aktualisiert; ältere Abschnitte als historische Momentaufnahme erhalten)  
 **Status:** Laufende Entwicklung; keine Release- oder Merge-Freigabe  
 **Verbindliche Anforderungen:** [SPECIFICATION.md](SPECIFICATION.md)  
 **Repository:** https://github.com/arator68/fritzbox-network-insight  
-**Aktueller Arbeitsbranch:** `feature/avm-mesh-topology`  
-**Pull Request:** [#32 – Add automatic AVM Mesh observations to Network Insight](https://github.com/arator68/fritzbox-network-insight/pull/32) → `develop`
+**Aktueller Arbeitsbranch:** `feature/wlan-device-details` (Ausgangsbasis `develop`)  
+**Historischer Pull Request:** [#32 – Add automatic AVM Mesh observations to Network Insight](https://github.com/arator68/fritzbox-network-insight/pull/32) → `develop` (Status in Abschnitt 1 ist historisch und nicht der aktuelle Arbeitsauftrag)
 
 > **Zweck:** Diese Datei dokumentiert den tatsächlichen Arbeitsstand und die nächsten Schritte für die Fortsetzung in einem neuen Chat. Sie ergänzt die Spezifikation, ersetzt sie nicht. Angaben aus dem früheren Chat sind als solche gekennzeichnet; sie sind nicht automatisch durch CI oder Quellcode verifiziert.
 
@@ -110,3 +110,70 @@ Server-3
 - Bestehende Klassifizierungsquelle und Konfidenz werden aus den Hostdaten übernommen; `topology/view_model.py` gibt diese Metadaten weiter.
 - `tests/test_mesh_device_type.py` ergänzt drei Regressionstests (Mesh-Rollen, Vorrang bestehender Klassifizierung, Ausgabe in der Topologieansicht).
 - **Offen:** GitHub-CI und anschließender Home-Assistant-Test der neuen `topology_view`-Ausgabe. Keine Änderung an Netzwerkkarte oder Verkabelungserkennung. PR #32 bleibt Draft.
+
+## 9. 2026-11-09 – LAN-Gerätedetails abgeschlossen, WLAN-Gerätedetails in Entwicklung
+
+### LAN-Gerätedetails (in `develop`)
+
+- PR [#34 – LAN-Gerätedetails](https://github.com/arator68/fritzbox-network-insight/pull/34) wurde nach grünen Prüfungen nach `develop` übernommen.
+- `lan_device_details.py` reichert MAC-bezogene Geräteinformationen mit IF-MIB-/FDB-Beobachtungen an; der vorhandene Statussensor zeigt `lan_switch_ports` **nur für explizit als Ethernet identifizierte Geräte**.
+- `connection: reachable_via_port` ist eine FDB-Erreichbarkeitsaussage, **kein Nachweis eines direkten Kabels**. Geschwindigkeit und Betriebsstatus beziehen sich auf den gemeldeten Switch-Port.
+- In Home Assistant wurde der Desktop-PC an `gigabitEthernet 1/0/13` mit 1000 Mbit/s geprüft; ein WLAN-Luftreiniger zeigte korrekt kein `lan_switch_ports`-Attribut.
+
+### WLAN-Gerätedetails (aktueller Feature-Branch)
+
+- Arbeitsbranch: `feature/wlan-device-details` von `develop`; **noch nicht nach `develop` gemergt**.
+- Diagnose `fritzbox_network_insight.device_details_diagnostics` vom 09.11.2026: 72 Geräte; WLAN-Daten aus AVM Mesh und teilweise TR-064 vorhanden. Unterschiede zwischen Quellen sind real: z. B. Dreame-Saugroboter mit Mesh-Kanal 1 und TR-064-Kanal 11. RX-Raten können ausdrücklich 0 sein.
+- Neue Datei `custom_components/fritzbox_network_insight/wlan_device_attributes.py` bereitet ausschließlich vorhandene WLAN-Beobachtungen für das Attribut `wlan_details` auf, einschließlich `field`, `value`, `source` und `observed_at`. Mesh-WLAN-Peer-MAC wird als gemeldete Beobachtung, nicht als bestätigte physische Verbindung ausgegeben.
+- `sensor.py` ergänzt `wlan_details` am bestehenden Statussensor nur bei ausdrücklich als WLAN klassifizierten Hosts. Keine neuen Entitäten, keine Entity-ID- oder Anzeigenamenänderungen; bestehende LAN-Attribute bleiben erhalten.
+- `tests/test_wlan_device_attributes.py` enthält Regressionstests für abweichende Quellen/Kanäle, Nullwerte, rohe Signalwerte, LAN-Abgrenzung und fehlende Messungen.
+- **CI:** Nutzer meldete „test ok“; damit sind die GitHub-Prüfungen laut Nutzer grün. **Home-Assistant-Praxistest steht aus**; die Änderungen wurden noch nicht als installiert bestätigt.
+
+### Vereinbarter Entwicklungs- und Testablauf
+
+- Python-Änderungen an Custom Integrations benötigen für einen verlässlichen Test üblicherweise einen Home-Assistant-Neustart. Deshalb **Änderungen und GitHub-Tests bündeln**, statt nach jedem Commit neu zu starten.
+- Erst nach Abschluss eines sinnvollen Entwicklungsabschnitts einmal auf der produktiven HA-Instanz installieren und prüfen; bis dahin produktives HA unangetastet lassen.
+- `docs/DEVELOPMENT_STATUS.md` nach abgeschlossenen Schritten und wesentlichen Statuswechseln fortschreiben, dabei CI, HA-Praxistest und Merge-Status klar trennen.
+
+### Nächster Schritt
+
+1. WLAN-Attributmodell und Tests im Feature-Branch abschließend prüfen, insbesondere die Größe der HA-Statusattribute und die korrekte Quellzuordnung bei mehreren Mesh-Beobachtungen.
+2. Weitere kleine Verbesserungen nach Möglichkeit vor dem nächsten gemeinsamen HA-Praxistest bündeln.
+3. Nach einem einzigen HA-Neustart die WLAN-Statusattribute an einem konkreten Gerät (z. B. `sensor.fritzbox_network_insight_004b12694d2c_status`) prüfen.
+4. Erst danach über PR/Merge nach `develop` entscheiden.
+
+**Hinweis:** Abschnitte 1–8 dokumentieren frühere Zwischenstände und sind nicht als aktuelle PR-/CI-Aussagen zu lesen. Insbesondere die damaligen Aussagen zu PR #32 sind historische Momentaufnahmen.
+
+## 10. 2026-11-09 – WLAN-Gerätedetails in Home Assistant praktisch bestätigt
+
+- Nutzer hat Home Assistant nach Installation der aktuellen WLAN-Änderungen neu gestartet und die Statusattribute des WLAN-Luftreinigers im Arbeitszimmer übermittelt: `sensor.fritzbox_network_insight_004b12694d2c_status`, MAC `00:4B:12:69:4D:2C`, `interface_type: 802.11`.
+- **Praxistest erfolgreich:** `wlan_details` ist vorhanden; RX 0 Mbit/s, TX 71 Mbit/s, RX/TX-Maximum je 150 Mbit/s, Mesh-Kanal 1. Die Messwerte sind mit `source: avm_mesh_radio` und `observed_at: 2026-11-09T11:39:05.474961+00:00` versehen.
+- Rohe Signal-/RCPI-Felder bleiben unverändert: `wifi_mesh_signal_rx_raw: -31`, `mesh_rx_rcpi_raw: -31`, `mesh_tx_rcpi_raw: 255`. Diese Werte **nicht** ungeprüft als dBm oder Prozent interpretieren.
+- `mesh_reported_wlan_peer_mac: E0:28:6D:C0:51:38` wird mit `source: avm_mesh` ausgegeben; dessen `observed_at` ist aktuell `null`. **Offener Qualitätsaspekt:** Zeitstempel dieser Peer-Beobachtung prüfen und nur bei belegter Quelle ergänzen.
+- In der übermittelten Attributliste ist kein `lan_switch_ports` vorhanden; die LAN-/WLAN-Abgrenzung ist für dieses Gerät korrekt.
+- **Keine weitere HA-Neustartschleife nötig** für diese Prüfung. Nächste Schritte: Qualitätsaspekt mit dem Peer-Zeitstempel bei Bedarf im Code prüfen, Änderung bündeln und den Feature-Branch für einen PR nach `develop` vorbereiten. Merge noch nicht bestätigt.
+
+## 11. 2026-11-09 – Abgleich mit FRITZ!Box-Weboberfläche (Luftreiniger Arbeitszimmer)
+
+- Nutzer lieferte Screenshots der AVM-Oberfläche: WLAN-Pfad `fritz.box → SG3428 → Fritz7560.koch.local → Luftreiniger`, letzter Abschnitt WLAN mit **2,4 GHz**, Anzeige **72 Mbit/s**.
+- WLAN-Detailansicht der FRITZ!Box: Frequenzband 2,4 GHz; Standard Wi-Fi 4; WDS nein; aktuelle Datenrate **↓72 / ↑14 Mbit/s**; maximal **↓150 / ↑150 Mbit/s**; Kanalbandbreite 20 MHz; 1× Sende-/1× Empfangs-Stream; Signalstärke **−31 dBm**; STBC.
+- HA-Sensor zum Vergleich: `wifi_rate_rx_mbps=0`, `wifi_rate_tx_mbps=71`, Maximalwerte 150/150, `mesh_wifi_channel=1`, `wifi_mesh_signal_rx_raw=-31`. **Maximalwerte stimmen überein, aktuelle Raten nicht**. Die Ursachen sind ungeklärt (z. B. Messzeitpunkt, Semantik/Richtung der Felder); Werte nicht auf Verdacht vertauschen.
+- `-31` stimmt numerisch mit dem in AVM angezeigten `−31 dBm` überein; die allgemeine Einheit/Interpretation des Rohfelds ist im Code noch nicht verifiziert. Keine globale dBm-Umbenennung allein aufgrund eines Beispiels.
+- Frequenzband, Standard, Kanalbandbreite, Streams, WDS und STBC erscheinen im bisher gezeigten `wlan_details`-Attribut nicht. Vor Ergänzung prüfen, ob die TR-064-/Mesh-Rohdaten diese Angaben zuverlässig liefern.
+- **Nächster technischer Prüfschritt:** Quelle und Bedeutung der WLAN-Raten und Signal-/Bandbreitenfelder im bestehenden AVM-Parser nachvollziehen, gezielte Tests erstellen; produktive HA-Installation erst nach gebündelten Änderungen erneut aktualisieren.
+
+## 12. 2026-11-09 – Quellcodeprüfung der WLAN-Raten und Funkmetadaten
+
+- `mesh_wlan_details.py` liest `cur_data_rate_rx` und `cur_data_rate_tx` aus dem Mesh-Link und rechnet jeweils durch 1000 in `wifi_rate_rx_mbps` und `wifi_rate_tx_mbps` um. **Im Parser findet keine RX-/TX-Vertauschung statt.** Ob diese Rohfeld-Richtung mit den Pfeilen in der FRITZ!Box-Weboberfläche übereinstimmt, ist damit noch nicht bewiesen.
+- Die AVM-Oberfläche zeigte 72/14 Mbit/s, die zeitlich getrennte Mesh-Beobachtung 0/71 Mbit/s. Eine Ursache ist **nicht belegt**; keine Korrektur der Live-Werte auf Verdacht.
+- `mesh_wlan_details.py` sammelt bereits selektive rohe Funkmetadaten aus Link/Interface/Kanal (z. B. `wifi_standard`, `stream_count`, `channel_width`) unter `mesh_wlan_*_radio_fields`, **falls** die AVM-Mesh-Payload sie enthält. Diese Dictionaries werden bislang nicht als einzelne `wlan_details`-Felder veröffentlicht; beim Luftreiniger sind solche Werte in den vorgelegten HA-Attributen nicht nachgewiesen.
+- `wlan_details.py` liest die TR-064 WLAN-Geräteliste aus den WLANConfiguration-Instanzen und unterstützt explizite Band-/Kanalbreitenfelder, aber nicht die zusätzlichen AVM-Weboberflächenwerte wie WDS/STBC. Instanznummern dürfen nicht als Funkband interpretiert werden.
+- Neuer gezielter Regressionstest in `tests/test_mesh_wlan_details.py`: prüft getrennte RX-/TX-Werte, 0 als gültige Rate, 150/150-Maximum, rohe Signalwerte und das selektive Extrahieren vorhandener Funkmetadaten ohne erfundene dBm-Werte. Commit `4636a25`; **CI-Ausführung dieses neuen Commits noch nicht bestätigt**.
+- Weiteres Vorgehen: CI abwarten; vor einer Erweiterung der sichtbaren Attribute prüfen, ob ein reales Mesh-Payload des Geräts diese Funkmetadaten tatsächlich enthält. Keine zusätzliche HA-Installation allein für die Quellcodeprüfung.
+
+## 13. 2026-11-09 – Rückmeldung zu GitHub-Tests
+
+- Nutzer bestätigt nach dem zusätzlichen Regressionstest und der Dokumentationsaktualisierung: **„tests ok“**. Die GitHub-Tests des aktuellen Feature-Branches sind damit laut Nutzerrückmeldung erfolgreich.
+- Der neue Regressionstest zur RX-/TX-Feldzuordnung ist damit nach Nutzerangabe grün. Das belegt die Parser-Verarbeitung, **nicht** die Gleichheit der zeitlich getrennten AVM-Weboberflächen- und Mesh-Messwerte.
+- Bereits bestätigter HA-Praxistest der WLAN-Attribute bleibt gültig; seitdem wurde nur ein Test und die Dokumentation geändert. **Kein erneuter Home-Assistant-Neustart erforderlich.**
+- Nächster Schritt: Feature-Branch zur Prüfung als Pull Request gegen `develop` vorbereiten; mögliche Erweiterungen zu Funkmetadaten getrennt und quellenbasiert behandeln.

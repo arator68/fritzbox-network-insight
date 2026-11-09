@@ -79,6 +79,38 @@ class TestMeshWlanDetails(unittest.TestCase):
         self.assertNotIn("password", str(radio))
         self.assertNotIn("secret", str(radio))
 
+    def test_avm_rate_directions_preserved_without_ui_assumptions(self):
+        """The parser preserves AVM rx/tx fields; UI arrow semantics are separate."""
+        payload = {"nodes": [
+            {"uid": "ap", "mesh_role": "slave", "node_interfaces": [{
+                "type": "WLAN", "current_channel": 1,
+                "current_channel_info": {"channel_width": "20 MHz"},
+                "node_links": [{"uid": "link", "state": "CONNECTED",
+                    "node_1_uid": "ap", "node_2_uid": "client",
+                    "cur_data_rate_rx": 0, "cur_data_rate_tx": 71000,
+                    "max_data_rate_rx": 150000, "max_data_rate_tx": 150000,
+                    "rx_rcpi": -31, "tx_rcpi": 255,
+                    "wifi_standard": "n", "stream_count": 1}]
+            }]},
+            {"uid": "client", "device_mac_address": "00:4B:12:69:4D:2C"},
+        ]}
+        mac = "00:4B:12:69:4D:2C"
+        result = extract(payload, {mac: mac})[mac][0]
+        self.assertEqual(result["wifi_rate_rx_mbps"], 0)
+        self.assertEqual(result["wifi_rate_tx_mbps"], 71)
+        self.assertEqual(result["wifi_rate_rx_max_mbps"], 150)
+        self.assertEqual(result["wifi_rate_tx_max_mbps"], 150)
+        self.assertEqual(result["wifi_mesh_signal_rx_raw"], -31)
+        self.assertEqual(result["mesh_tx_rcpi_raw"], 255)
+        self.assertEqual(result["mesh_wlan_link_radio_fields"], {
+            "wifi_standard": "n", "stream_count": 1,
+            "max_data_rate_rx": 150000, "max_data_rate_tx": 150000,
+        })
+        self.assertEqual(result["mesh_wlan_channel_radio_fields"], {
+            "channel_width": "20 MHz",
+        })
+        self.assertNotIn("wifi_signal_dbm", result)
+
     def test_unmatched_client_and_disconnected_links_ignored(self):
         payload = {"nodes": [
             {"uid": "ap", "mesh_role": "master", "node_interfaces": [{
