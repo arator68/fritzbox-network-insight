@@ -4,7 +4,7 @@
 **Status:** Laufende Entwicklung; keine Release- oder Merge-Freigabe  
 **Verbindliche Anforderungen:** [SPECIFICATION.md](SPECIFICATION.md)  
 **Repository:** https://github.com/arator68/fritzbox-network-insight  
-**Aktueller Arbeitsbranch:** `develop` (PR #35 gemergt; neuer Feature-Branch für Folgearbeiten noch nicht angelegt)  
+**Aktueller Arbeitsbranch:** `feature/wlan-radio-metadata` (von `develop`; noch kein PR)  
 **Historischer Pull Request:** [#32 – Add automatic AVM Mesh observations to Network Insight](https://github.com/arator68/fritzbox-network-insight/pull/32) → `develop` (Status in Abschnitt 1 ist historisch und nicht der aktuelle Arbeitsauftrag)
 
 > **Zweck:** Diese Datei dokumentiert den tatsächlichen Arbeitsstand und die nächsten Schritte für die Fortsetzung in einem neuen Chat. Sie ergänzt die Spezifikation, ersetzt sie nicht. Angaben aus dem früheren Chat sind als solche gekennzeichnet; sie sind nicht automatisch durch CI oder Quellcode verifiziert.
@@ -185,3 +185,43 @@ Server-3
 - Der zuvor offene Hinweis in Abschnitt 13 („PR vorbereiten“) ist historisch; der PR ist inzwischen erledigt.
 - **Offen für spätere Arbeit:** Differenz zwischen zeitlich getrennten AVM-Oberflächen- und Mesh-Raten, zusätzliche Funkmetadaten nur bei verlässlicher Quelle, fehlender Zeitstempel der Mesh-Peer-Beobachtung.
 - **Nächster Schritt:** Folgearbeiten in einem neuen Feature-Branch von `develop` beginnen, Änderungen bündeln und die produktive HA-Instanz nicht nach jedem Commit neu starten.
+
+## 15. 2026-11-09 – WLAN-Funkmetadaten: konservative Erweiterung in Arbeit
+
+- Neuer Branch `feature/wlan-radio-metadata` von `develop` erstellt. **Noch nicht gemergt oder in Home Assistant installiert.**
+- AVM dokumentiert versionierte Mesh-Topologie-JSON-Schemas; welche Felder im konkreten FRITZ!OS-/Geräte-Payload vorhanden sind, muss pro Beobachtung geprüft werden. Referenz: https://fritz.com/pages/schnittstellen (Mesh-Topologie, Schema v8.7 für FRITZ!OS 8.25).
+- Codeprüfung: `mesh_wlan_details.py` extrahiert bereits selektive Rohfelder aus Link/Interface/Kanal in `mesh_wlan_*_radio_fields`, sofern die AVM-Payload diese enthält. `wlan_device_attributes.py` gab diese bisher nicht als skalare Attribute aus.
+- Änderung `wlan_device_attributes.py`: explizite Whitelist für tatsächlich beobachtete `wifi_standard`, `stream_count`, `phy_mode`, `wifi_mode`, `wlan_mode`, `channel_width` und `frequency_band` aus den bestehenden Rohmetadaten. Ausgabe erhält `field`, `value`, `source`, `observed_at` sowie `raw_scope` (link/interface/channel). Keine Ableitung von Wi-Fi 4, 2,4 GHz, 20 MHz oder Streamzahl aus Kanal/Raten.
+- `tests/test_wlan_device_attributes.py` erweitert: gezielte positive Tests für tatsächlich vorhandene Funkfelder, Quell-/Zeitstempel-/Scope-Erhalt, Ausschluss anderer Rohdaten und Negativtest gegen erfundene Band-/Standardangaben bei Kanal 1.
+- **Tests/CI des neuen Branches noch nicht bestätigt.** Der vorangegangene PR #35 ist bereits gemergt und in HA getestet; die neue Erweiterung ist separat.
+- **Nächster Schritt:** GitHub-Tests prüfen, reale Mesh-Diagnose auf Verfügbarkeit dieser Funkfelder untersuchen, dann bei Bedarf weitere Änderungen bündeln. Kein HA-Neustart allein für diesen Commit.
+
+## 16. 2026-11-09 – Tests für WLAN-Funkmetadaten bestätigt
+
+- Nutzer meldet **„tests ok“** für den Branch `feature/wlan-radio-metadata` nach den Änderungen an Attribut-Whitelist und Regressionstests. Die GitHub-Tests sind damit laut Rückmeldung erfolgreich.
+- Die Tests belegen das Verhalten mit definierten Beispieldaten, **nicht**, dass die FRITZ!Box des Nutzers diese optionalen Funkmetadaten im realen Mesh-Payload liefert.
+- Nächster Validierungsschritt: vorhandene reale AVM-Mesh-Diagnose bzw. vorhandene Geräteattribute auf `mesh_wlan_link_radio_fields`, `mesh_wlan_interface_radio_fields` und `mesh_wlan_channel_radio_fields` prüfen; fehlende Felder nicht erraten.
+- Noch kein Merge, keine neue Home-Assistant-Installation und kein Neustart erforderlich.
+
+## 17. 2026-11-09 – Reale Gerätediagnose Luftreiniger geprüft
+
+- Nutzer hat `fritzbox_network_insight.device_details_diagnostics` für `00:4B:12:69:4D:2C` ausgeführt. Reale Beobachtung für WLAN-Luftreiniger: `mesh_wifi_channel: 1`, `wifi_rate_rx_mbps: 0`, `wifi_rate_tx_mbps: 72`, Maximalraten 150/150 Mbit/s, `wifi_mesh_signal_rx_raw: -27`, Mesh-Peer `E0:28:6D:C0:51:38`.
+- `mesh_wlan_interface_radio_fields` enthält ausschließlich `is_upstream: false`; `mesh_wlan_link_radio_fields` ausschließlich `max_data_rate_rx: 150000` und `max_data_rate_tx: 150000`. Ein `mesh_wlan_channel_radio_fields`-Eintrag fehlt.
+- **Ergebnis:** Für dieses reale Gerät liegen keine expliziten `wifi_standard`-, `stream_count`-, `channel_width`- oder `frequency_band`-Felder in der aktuellen Diagnose vor. Die neue Attribut-Whitelist wird hier folgerichtig nichts zusätzlich ausgeben; keine heuristischen Ableitungen einführen.
+- SNMP-FDB: Port `gigabitEthernet 1/0/8` des SG3428 als `reachable_via_port`, `endpoint_access: wlan`, `direct_connection: unknown`; keine Behauptung einer direkten Kabelverbindung.
+- Die Daten stammen aus der bereits installierten Integration (noch ohne neuen Feature-Branch). **Keine erneute Installation/Neustart für die Datenerhebung nötig.** Für einen Nutzen der Erweiterung weitere reale WLAN-Geräte untersuchen oder auf zusätzliche tatsächlich vorhandene Quellen fokussieren.
+
+## 18. 2026-11-09 – Gesamtdiagnose mit 72 Geräten analysiert
+
+- Nutzer lieferte vollständige Ausgabe von `device_details_diagnostics`: **72 Geräte**, davon **55 mit `interface_type: 802.11`**.
+- `mesh_wlan_channel_radio_fields.channel_width` ist bei vielen WLAN-Geräten vorhanden; Beispiele: HeizungCam 20 MHz, T65Plus 160 MHz, FireHD 160 MHz. TR-064 meldet für T65Plus und FireHD gleichzeitig `wifi_channel_width: 80`; Steckdosenleiste-Kueche Mesh 40 MHz, TR-064 20. **Unterschiedliche Quellen und möglicherweise unterschiedliche Bedeutung; nicht blind zusammenführen.**
+- In den 55 WLAN-Geräte-Diagnosen wurden keine expliziten `wifi_standard`- oder `stream_count`-Rohfelder in den `mesh_wlan_*_radio_fields` gefunden; `wifi_frequency_band_mhz` war ebenfalls nicht vorhanden.
+- Die neu implementierte Ausgabe von `channel_width` aus Mesh-Rohmetadaten ist damit anhand realer Daten relevant, benötigt jedoch eine **klare Kennzeichnung als Mesh-Kanalbreite** (nicht ungeprüft als Client-Link-Bandbreite).
+- Nächster Schritt: Bedeutung/Zuordnung von Mesh-Interface-Kanalbreite vs. TR-064-Client-Kanalbreite im Code überprüfen, Attribute quellen- und scope-sicher benennen und Regressionstests ergänzen. Kein HA-Neustart erforderlich.
+
+## 19. 2026-11-09 – Mesh- und TR-064-Kanalbreiten getrennt
+
+- In `wlan_device_attributes.py` wird das aus `mesh_wlan_channel_radio_fields.channel_width` stammende Feld jetzt explizit als `mesh_radio_channel_width` veröffentlicht (mit `raw_scope: channel` und `measurement_scope: mesh_radio_channel`). Das bisherige `mesh_wifi_channel_width_raw` bleibt unverändert erhalten und erhält ebenfalls `measurement_scope: mesh_radio_channel`.
+- `wifi_channel_width` aus der TR-064-WLAN-Geräteliste bleibt unter dem bisherigen Namen erhalten und bekommt `measurement_scope: tr064_wlan_device`. Die genaue Semantik des AVM-Feldes wird nicht über die Quelle hinaus behauptet; insbesondere wird es nicht mit der Mesh-Funkzellenbreite gleichgesetzt.
+- Regressionstest `test_mesh_and_tr064_channel_widths_remain_distinct`: 80 (TR-064) vs. 160 MHz (Mesh) bleiben als getrennte Werte inklusive Quelle, Zeitstempel und Messbereich sichtbar. Der bestehende Metadatentest wurde an den eindeutigen Mesh-Feldnamen angepasst.
+- **GitHub-CI für diese neuen Commits noch nicht bestätigt.** Kein HA-Neustart nötig; Installation erst nach Tests und gebündeltem PR.
