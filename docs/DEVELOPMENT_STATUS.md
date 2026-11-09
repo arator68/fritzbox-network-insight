@@ -202,3 +202,11 @@ Server-3
 - Die Tests belegen das Verhalten mit definierten Beispieldaten, **nicht**, dass die FRITZ!Box des Nutzers diese optionalen Funkmetadaten im realen Mesh-Payload liefert.
 - Nächster Validierungsschritt: vorhandene reale AVM-Mesh-Diagnose bzw. vorhandene Geräteattribute auf `mesh_wlan_link_radio_fields`, `mesh_wlan_interface_radio_fields` und `mesh_wlan_channel_radio_fields` prüfen; fehlende Felder nicht erraten.
 - Noch kein Merge, keine neue Home-Assistant-Installation und kein Neustart erforderlich.
+
+## 17. 2026-11-09 – Reale Gerätediagnose Luftreiniger geprüft
+
+- Nutzer hat `fritzbox_network_insight.device_details_diagnostics` für `00:4B:12:69:4D:2C` ausgeführt. Reale Beobachtung für WLAN-Luftreiniger: `mesh_wifi_channel: 1`, `wifi_rate_rx_mbps: 0`, `wifi_rate_tx_mbps: 72`, Maximalraten 150/150 Mbit/s, `wifi_mesh_signal_rx_raw: -27`, Mesh-Peer `E0:28:6D:C0:51:38`.
+- `mesh_wlan_interface_radio_fields` enthält ausschließlich `is_upstream: false`; `mesh_wlan_link_radio_fields` ausschließlich `max_data_rate_rx: 150000` und `max_data_rate_tx: 150000`. Ein `mesh_wlan_channel_radio_fields`-Eintrag fehlt.
+- **Ergebnis:** Für dieses reale Gerät liegen keine expliziten `wifi_standard`-, `stream_count`-, `channel_width`- oder `frequency_band`-Felder in der aktuellen Diagnose vor. Die neue Attribut-Whitelist wird hier folgerichtig nichts zusätzlich ausgeben; keine heuristischen Ableitungen einführen.
+- SNMP-FDB: Port `gigabitEthernet 1/0/8` des SG3428 als `reachable_via_port`, `endpoint_access: wlan`, `direct_connection: unknown`; keine Behauptung einer direkten Kabelverbindung.
+- Die Daten stammen aus der bereits installierten Integration (noch ohne neuen Feature-Branch). **Keine erneute Installation/Neustart für die Datenerhebung nötig.** Für einen Nutzen der Erweiterung weitere reale WLAN-Geräte untersuchen oder auf zusätzliche tatsächlich vorhandene Quellen fokussieren.
