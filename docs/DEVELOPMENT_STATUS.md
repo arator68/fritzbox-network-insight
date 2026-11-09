@@ -4,7 +4,7 @@
 **Status:** Laufende Entwicklung; keine Release- oder Merge-Freigabe  
 **Verbindliche Anforderungen:** [SPECIFICATION.md](SPECIFICATION.md)  
 **Repository:** https://github.com/arator68/fritzbox-network-insight  
-**Aktueller Arbeitsbranch:** `feature/wlan-device-details` (Ausgangsbasis `develop`)  
+**Aktueller Arbeitsbranch:** `develop` (PR #35 gemergt; neuer Feature-Branch für Folgearbeiten noch nicht angelegt)  
 **Historischer Pull Request:** [#32 – Add automatic AVM Mesh observations to Network Insight](https://github.com/arator68/fritzbox-network-insight/pull/32) → `develop` (Status in Abschnitt 1 ist historisch und nicht der aktuelle Arbeitsauftrag)
 
 > **Zweck:** Diese Datei dokumentiert den tatsächlichen Arbeitsstand und die nächsten Schritte für die Fortsetzung in einem neuen Chat. Sie ergänzt die Spezifikation, ersetzt sie nicht. Angaben aus dem früheren Chat sind als solche gekennzeichnet; sie sind nicht automatisch durch CI oder Quellcode verifiziert.
@@ -177,3 +177,11 @@ Server-3
 - Der neue Regressionstest zur RX-/TX-Feldzuordnung ist damit nach Nutzerangabe grün. Das belegt die Parser-Verarbeitung, **nicht** die Gleichheit der zeitlich getrennten AVM-Weboberflächen- und Mesh-Messwerte.
 - Bereits bestätigter HA-Praxistest der WLAN-Attribute bleibt gültig; seitdem wurde nur ein Test und die Dokumentation geändert. **Kein erneuter Home-Assistant-Neustart erforderlich.**
 - Nächster Schritt: Feature-Branch zur Prüfung als Pull Request gegen `develop` vorbereiten; mögliche Erweiterungen zu Funkmetadaten getrennt und quellenbasiert behandeln.
+
+## 14. 2026-11-09 – PR #35 erfolgreich nach develop gemergt
+
+- [PR #35 – Add source-aware WLAN device details to status sensors](https://github.com/arator68/fritzbox-network-insight/pull/35) wurde am **09.11.2026 um 11:51:14 UTC** erfolgreich nach `develop` gemergt (GitHub-Status `closed`, `merged: true`). Merge-Commit: `d4d0ce1740cf0694b216841c038aa4694d5b6ab3`.
+- GitHub-Tests wurden vom Nutzer als grün bestätigt; der Home-Assistant-Praxistest am WLAN-Luftreiniger war zuvor erfolgreich. **WLAN-Gerätedetails sind damit als Entwicklungsabschnitt abgeschlossen.**
+- Der zuvor offene Hinweis in Abschnitt 13 („PR vorbereiten“) ist historisch; der PR ist inzwischen erledigt.
+- **Offen für spätere Arbeit:** Differenz zwischen zeitlich getrennten AVM-Oberflächen- und Mesh-Raten, zusätzliche Funkmetadaten nur bei verlässlicher Quelle, fehlender Zeitstempel der Mesh-Peer-Beobachtung.
+- **Nächster Schritt:** Folgearbeiten in einem neuen Feature-Branch von `develop` beginnen, Änderungen bündeln und die produktive HA-Instanz nicht nach jedem Commit neu starten.
