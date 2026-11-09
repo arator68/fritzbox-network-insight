@@ -11,6 +11,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 
 from .const import DOMAIN
 from .coordinator import FritzBoxDataUpdateCoordinator
+from .device_diagnostics import device_details_snapshot
 from .fritzbox_client import FritzBoxClient
 from .mac_vendor import preload_mac_vendor_registry
 from .topology.view_model import build_topology_view
@@ -52,6 +53,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ) from err
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+
+    if not hass.services.has_service(DOMAIN, "device_details_diagnostics"):
+        async def async_device_details_diagnostics(call):
+            """Return source-tagged details without adding entities."""
+            domain_data = hass.data.get(DOMAIN, {})
+            requested = call.data.get("entry_id")
+            if requested:
+                selected = domain_data.get(requested)
+            elif len(domain_data) == 1:
+                selected = next(iter(domain_data.values()))
+            else:
+                selected = None
+            if selected is None:
+                return {"error": "Specify a valid entry_id (required with multiple entries)"}
+            return device_details_snapshot(
+                selected.device_details, call.data.get("mac")
+            )
+
+        hass.services.async_register(
+            DOMAIN, "device_details_diagnostics", async_device_details_diagnostics,
+            schema=vol.Schema({
+                vol.Optional("entry_id"): str,
+                vol.Optional("mac"): str,
+            }),
+            supports_response=SupportsResponse.ONLY,
+        )
 
     if not hass.services.has_service(DOMAIN, "topology_diagnostics"):
         async def async_topology_diagnostics(call):
