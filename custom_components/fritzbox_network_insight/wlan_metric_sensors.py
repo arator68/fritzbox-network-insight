@@ -25,7 +25,7 @@ def metric_observation(rows: list[dict[str, Any]], metric: str) -> dict[str, Any
             continue
         value = row.get("value")
         if metric == "mesh_channel_width" and isinstance(value, str):
-            match = re.fullmatch(r"\\s*(\\d+(?:\\.\\d+)?)\\s*MHz\\s*", value)
+            match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*MHz\s*", value)
             if not match:
                 continue
             value = float(match.group(1))
