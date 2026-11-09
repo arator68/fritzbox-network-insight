@@ -46,6 +46,22 @@ class TestDeviceDetails(unittest.TestCase):
         self.assertIs(details.values("online")[0].value, False)
         self.assertEqual(details.values("speed")[0].value, 0)
 
+    def test_host_adapter_keeps_sources_and_omits_missing_fields(self):
+        details = model.details_from_host({
+            "mac": "04:B4:FE:18:79:65",
+            "name": "fritz.box",
+            "active": False,
+            "dns_name": None,
+            "mesh_role": "master",
+            "raw": {"X_AVM-DE_Speed": "1000", "InterfaceType": "Ethernet"},
+        })
+        self.assertEqual(details.values("online")[0].value, False)
+        self.assertEqual(details.values("online")[0].source, "tr064")
+        self.assertEqual(details.values("mesh_role")[0].source, "avm_mesh")
+        self.assertEqual(details.values("lan_speed_mbps")[0].value, "1000")
+        self.assertFalse(details.available("dns_name"))
+        self.assertFalse(details.available("wifi_signal"))
+
     def test_invalid_identity_and_missing_source_rejected(self):
         with self.assertRaises(ValueError):
             model.build_device_details("invalid", {"tr064": {"name": "x"}})
