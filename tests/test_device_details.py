@@ -50,6 +50,20 @@ class TestDeviceDetails(unittest.TestCase):
             "Invalid MAC address",
         )
 
+    def test_optional_wlan_band_and_rx_rates(self):
+        details = model.build_device_details("20:6E:F1:02:62:D8", {})
+        model.add_wlan_details(details, {
+            "wlan_configuration_1": {
+                "wifi_frequency_band_mhz": 2400,
+                "wifi_speed_rx_mbps": 86,
+                "wifi_speed_max_mbps": 143,
+                "wifi_speed_rx_max_mbps": 143,
+            }
+        })
+        self.assertEqual(details.values("wifi_frequency_band_mhz")[0].value, 2400)
+        self.assertEqual(details.values("wifi_speed_rx_mbps")[0].value, 86)
+        self.assertFalse(details.available("wifi_signal_dbm"))
+
     def test_repeated_wlan_instances_are_deduplicated(self):
         details = model.build_device_details("20:6E:F1:02:62:D8", {})
         repeated = {"wifi_channel": 11, "wifi_channel_width": 20,
