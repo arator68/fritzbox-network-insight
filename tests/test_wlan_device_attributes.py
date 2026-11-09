@@ -80,6 +80,25 @@ class WlanDeviceAttributeTests(unittest.TestCase):
         self.assertEqual(by_field["wifi_channel_width"]["observed_at"], "tr-time")
         self.assertNotIn("channel_width", by_field)
 
+    def test_readable_summary_keeps_both_widths_and_provenance(self):
+        details = model.build_device_details("30:EC:7C:0F:4D:ED", {})
+        details.add("wifi_channel_width", 80, source="tr064_wlan_configuration_1", observed_at="tr-time")
+        details.add("mesh_wlan_channel_radio_fields", {"channel_width": "160 MHz"}, source="avm_mesh_radio", observed_at="mesh-time")
+        details.add("wifi_rate_rx_mbps", 0, source="avm_mesh_radio")
+        rows = formatter.wlan_summary_attribute(formatter.wlan_details_attribute(details, "802.11"))
+        by_label = {row["label"]: row for row in rows}
+        self.assertEqual(by_label["WLAN-Gerät – Kanalbreite (TR-064)"]["value"], "80 MHz")
+        self.assertEqual(by_label["Mesh-Funkkanal – Kanalbreite"]["value"], "160 MHz")
+        self.assertEqual(by_label["Mesh-Funkkanal – Kanalbreite"]["measurement_scope"], "mesh_radio_channel")
+        self.assertEqual(by_label["WLAN-Gerät – Kanalbreite (TR-064)"]["observed_at"], "tr-time")
+        self.assertEqual(by_label["Empfangsdatenrate (Mesh)"]["value"], "0 Mbit/s")
+
+    def test_readable_summary_does_not_invent_missing_width(self):
+        details = model.build_device_details("00:4B:12:69:4D:2C", {})
+        details.add("mesh_wifi_channel", 1, source="avm_mesh_radio")
+        rows = formatter.wlan_summary_attribute(formatter.wlan_details_attribute(details, "802.11"))
+        self.assertEqual([row["label"] for row in rows], ["Mesh-Kanal"])
+
     def test_missing_radio_metadata_is_not_guessed_from_channel(self):
         details = model.build_device_details("00:4B:12:69:4D:2C", {})
         details.add("mesh_wifi_channel", 1, source="avm_mesh_radio")

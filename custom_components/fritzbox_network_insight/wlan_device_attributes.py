@@ -96,3 +96,43 @@ def wlan_details_attribute(details: DeviceDetails | None, interface_type: Any) -
                 "observed_at": observation.observed_at,
             })
     return observations
+
+
+# Compact presentation data for dashboards. Raw observations remain in
+# wlan_details and are never replaced by this view.
+_PRESENTATION_FIELDS = (
+    ("wifi_channel", "WLAN-Kanal (TR-064)", None),
+    ("mesh_wifi_channel", "Mesh-Kanal", None),
+    ("wifi_channel_width", "WLAN-Gerät – Kanalbreite (TR-064)", "MHz"),
+    ("mesh_radio_channel_width", "Mesh-Funkkanal – Kanalbreite", None),
+    ("wifi_rate_rx_mbps", "Empfangsdatenrate (Mesh)", "Mbit/s"),
+    ("wifi_rate_tx_mbps", "Sendedatenrate (Mesh)", "Mbit/s"),
+    ("wifi_rate_rx_max_mbps", "Max. Empfangsdatenrate (Mesh)", "Mbit/s"),
+    ("wifi_rate_tx_max_mbps", "Max. Sendedatenrate (Mesh)", "Mbit/s"),
+)
+
+
+def wlan_summary_attribute(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Create labeled, source-aware display rows from existing WLAN observations.
+
+    The Mesh channel width describes the radio, not a client's negotiated
+    bandwidth. Preserve competing readings; never derive missing values.
+    """
+    result: list[dict[str, Any]] = []
+    for field, label, unit in _PRESENTATION_FIELDS:
+        for row in rows:
+            if row.get("field") != field:
+                continue
+            value = row.get("value")
+            if not isinstance(value, (str, int, float)) or isinstance(value, bool):
+                continue
+            display = f"{value} {unit}" if unit else str(value)
+            result.append({
+                "label": label,
+                "value": display,
+                "source": row.get("source"),
+                "observed_at": row.get("observed_at"),
+                **({"measurement_scope": row["measurement_scope"]}
+                   if "measurement_scope" in row else {}),
+            })
+    return result
