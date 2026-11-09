@@ -58,34 +58,34 @@
         }
       },
       "wlan_mesh_peer_channel_width": {
-        "name": "Mesh peer WLAN interface channel width"
+        "name": "WLAN channel width"
       },
       "wlan_mesh_channel": {
-        "name": "Mesh WLAN radio channel"
+        "name": "WLAN channel"
       },
       "wlan_mesh_signal_rx_raw": {
-        "name": "Mesh received signal (raw)"
+        "name": "WLAN receive signal"
       },
       "wlan_mesh_signal_tx_raw": {
-        "name": "Mesh transmitted signal (raw)"
+        "name": "WLAN transmit signal"
       },
       "wlan_channel": {
-        "name": "WLAN channel (source in attributes)"
+        "name": "WLAN channel"
       },
       "wlan_channel_width": {
-        "name": "WLAN device channel width (source in attributes)"
+        "name": "WLAN channel width"
       },
       "wlan_mesh_channel_width": {
         "name": "Mesh radio channel width"
       },
       "wlan_rx_rate": {
-        "name": "WLAN Mesh rate RX (AVM raw field)"
+        "name": "WLAN data rate RX"
       },
       "wlan_tx_rate": {
-        "name": "WLAN Mesh rate TX (AVM raw field)"
+        "name": "WLAN data rate TX"
       },
       "wlan_signal_strength": {
-        "name": "WLAN signal (TR-064 / Mesh raw value)"
+        "name": "WLAN signal strength"
       }
     }
   }
