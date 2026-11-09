@@ -20,6 +20,7 @@ from .discovery import DiscoveryManager
 from .discovery.snmp import SnmpDiscoveryAdapter
 from .mac_vendor import lookup_mac_vendor
 from .mesh import fetch_mesh, parse_mesh
+from .mesh_wlan_details import extract_mesh_wlan_details
 from .wlan_details import fetch_wlan_devices
 from .device_details import (
     DeviceDetails, details_from_host, add_snmp_details,
@@ -75,6 +76,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self.entry = entry
         self.mesh_topology: dict[str, Any] = {"nodes": [], "links": [], "aliases": {}}
         self._mesh_last_attempt: float = 0.0
+        self._mesh_wlan_details: dict[str, list[dict[str, Any]]] = {}
         self._wlan_observations: dict[str, dict[str, dict[str, Any]]] = {}
         self._wlan_last_attempt: float = 0.0
         self._snmp_last_attempt: float = 0.0
@@ -412,7 +414,11 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                     fetch_mesh, self.client.host, self.client.username,
                     self.client.password, self.client.timeout,
                 )
-                self.mesh_topology = parse_mesh(payload, indexed)
+                parsed_mesh = parse_mesh(payload, indexed)
+                self._mesh_wlan_details = extract_mesh_wlan_details(
+                    payload, parsed_mesh.get("aliases", {})
+                )
+                self.mesh_topology = parsed_mesh
             except Exception as err:
                 _LOGGER.warning("AVM Mesh refresh failed; retaining previous data: %s", err)
         mesh_nodes = {node["mac"]: node for node in self.mesh_topology.get("nodes", [])}
@@ -487,6 +493,9 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             add_mesh_link_details(details, self.mesh_topology.get("links", []))
             add_lldp_link_details(details, self.topology_observations)
             add_wlan_details(details, self._wlan_observations.get(mac))
+            for radio in self._mesh_wlan_details.get(mac, []):
+                for key, value in radio.items():
+                    details.add(key, value, source="avm_mesh_radio")
         _LOGGER.info("FRITZ!Box host scan completed: %d device(s) found", len(indexed))
         for host in indexed.values():
             _LOGGER.debug(
