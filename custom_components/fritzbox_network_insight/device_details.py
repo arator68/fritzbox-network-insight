@@ -205,7 +205,8 @@ def add_lldp_link_details(
 
 
 def add_wlan_details(
-    details: DeviceDetails, observations: Mapping[str, Mapping[str, Any]] | None
+    details: DeviceDetails, observations: Mapping[str, Mapping[str, Any]] | None,
+    *, observed_at: str | None = None,
 ) -> None:
     """Attach only MAC-matched, actually reported WLAN measurements.
 
@@ -234,4 +235,4 @@ def add_wlan_details(
             if fingerprint in seen:
                 continue
             seen.add(fingerprint)
-            details.add(key, value, source=f"tr064_{instance}")
+            details.add(key, value, source=f"tr064_{instance}", observed_at=observed_at)
