@@ -31,6 +31,18 @@ class WlanMetricTests(unittest.TestCase):
         self.assertIsNone(module.metric_observation([{"field": "mesh_radio_channel_width", "value": "unknown", "measurement_scope": "mesh_radio_channel"}], "mesh_channel_width"))
         self.assertIsNone(module.metric_observation([{"field": "wifi_channel_width", "value": 160, "measurement_scope": "mesh_radio_channel"}], "channel_width"))
 
+    def test_mesh_channel_and_signals_are_source_specific(self):
+        rows = [
+            {"field": "mesh_wifi_channel", "value": 104, "source": "avm_mesh"},
+            {"field": "mesh_rx_rcpi_raw", "value": -57, "source": "avm_mesh"},
+            {"field": "mesh_tx_rcpi_raw", "value": -53, "source": "avm_mesh"},
+        ]
+        self.assertEqual(module.metric_observation(rows, "mesh_channel")["value"], 104)
+        self.assertEqual(module.metric_observation(rows, "mesh_signal_rx_raw")["value"], -57)
+        self.assertEqual(module.metric_observation(rows, "mesh_signal_tx_raw")["value"], -53)
+        self.assertIsNone(module.metric_observation(rows, "channel"))
+        self.assertIsNone(module.metric_observation([{"field": "mesh_rx_rcpi_raw", "value": 255}], "mesh_signal_rx_raw"))
+
     def test_zero_rate_is_valid(self):
         self.assertEqual(module.metric_observation([{"field": "wifi_rate_rx_mbps", "value": 0}], "rx_rate")["value"], 0)
 
