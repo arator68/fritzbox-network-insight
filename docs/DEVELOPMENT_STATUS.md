@@ -102,3 +102,11 @@ Server-3
 - Neue read-only Aktion `fritzbox_network_insight.topology_view` liefert das Karten-Datenmodell. Bei mehreren konfigurierten FRITZ!Boxen ist `entry_id` erforderlich. Die Aktion ist in `services.yaml` dokumentiert.
 - `tests/test_topology_view.py` enthält gezielte Regressionstests für unbekannte Repeater-Uplinks, bestätigte Switch-Kanten und FDB-Zweigmitgliedschaft.
 - **Noch nicht abgeschlossen:** CI-Prüfung, Ausführung in Home Assistant und grafische Lovelace-Karte. Diese Änderung liefert zunächst die geprüfbare Backend-Schnittstelle, **noch keine fertige grafische HA-Karte**. PR #32 bleibt Draft und darf nicht allein aufgrund dieser Änderungen gemergt werden.
+
+## 8. 2026-11-09 – Gezielte Mesh-Geräteklassifizierung
+
+- Ursache: Die zentrale konservative Klassifizierung setzt ohne manuelle/protokollbasierte Erkennung `device_type: null`; das kombinierte Topologiemodell nutzte die bereits bekannte AVM-Mesh-Rolle bisher nicht als Fallback.
+- `topology/combined.py`: Nur wenn noch kein `device_type` vorliegt, wird `mesh_role: master` zu `router` und `mesh_role: slave` zu `access_point`. Die Rolle `slave` unterscheidet eine zweite FRITZ!Box nicht zuverlässig von einem Repeater; daher keine unbelegte spezielle Repeater-Kategorie. Bereits vorhandene manuelle/SNMP-Klassifizierungen haben Vorrang. Quelle `avm_mesh_role` und Konfidenz `detected` werden ergänzt.
+- Bestehende Klassifizierungsquelle und Konfidenz werden aus den Hostdaten übernommen; `topology/view_model.py` gibt diese Metadaten weiter.
+- `tests/test_mesh_device_type.py` ergänzt drei Regressionstests (Mesh-Rollen, Vorrang bestehender Klassifizierung, Ausgabe in der Topologieansicht).
+- **Offen:** GitHub-CI und anschließender Home-Assistant-Test der neuen `topology_view`-Ausgabe. Keine Änderung an Netzwerkkarte oder Verkabelungserkennung. PR #32 bleibt Draft.
