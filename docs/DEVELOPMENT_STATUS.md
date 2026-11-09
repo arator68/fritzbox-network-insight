@@ -152,3 +152,12 @@ Server-3
 - `mesh_reported_wlan_peer_mac: E0:28:6D:C0:51:38` wird mit `source: avm_mesh` ausgegeben; dessen `observed_at` ist aktuell `null`. **Offener Qualitätsaspekt:** Zeitstempel dieser Peer-Beobachtung prüfen und nur bei belegter Quelle ergänzen.
 - In der übermittelten Attributliste ist kein `lan_switch_ports` vorhanden; die LAN-/WLAN-Abgrenzung ist für dieses Gerät korrekt.
 - **Keine weitere HA-Neustartschleife nötig** für diese Prüfung. Nächste Schritte: Qualitätsaspekt mit dem Peer-Zeitstempel bei Bedarf im Code prüfen, Änderung bündeln und den Feature-Branch für einen PR nach `develop` vorbereiten. Merge noch nicht bestätigt.
+
+## 11. 2026-11-09 – Abgleich mit FRITZ!Box-Weboberfläche (Luftreiniger Arbeitszimmer)
+
+- Nutzer lieferte Screenshots der AVM-Oberfläche: WLAN-Pfad `fritz.box → SG3428 → Fritz7560.koch.local → Luftreiniger`, letzter Abschnitt WLAN mit **2,4 GHz**, Anzeige **72 Mbit/s**.
+- WLAN-Detailansicht der FRITZ!Box: Frequenzband 2,4 GHz; Standard Wi-Fi 4; WDS nein; aktuelle Datenrate **↓72 / ↑14 Mbit/s**; maximal **↓150 / ↑150 Mbit/s**; Kanalbandbreite 20 MHz; 1× Sende-/1× Empfangs-Stream; Signalstärke **−31 dBm**; STBC.
+- HA-Sensor zum Vergleich: `wifi_rate_rx_mbps=0`, `wifi_rate_tx_mbps=71`, Maximalwerte 150/150, `mesh_wifi_channel=1`, `wifi_mesh_signal_rx_raw=-31`. **Maximalwerte stimmen überein, aktuelle Raten nicht**. Die Ursachen sind ungeklärt (z. B. Messzeitpunkt, Semantik/Richtung der Felder); Werte nicht auf Verdacht vertauschen.
+- `-31` stimmt numerisch mit dem in AVM angezeigten `−31 dBm` überein; die allgemeine Einheit/Interpretation des Rohfelds ist im Code noch nicht verifiziert. Keine globale dBm-Umbenennung allein aufgrund eines Beispiels.
+- Frequenzband, Standard, Kanalbandbreite, Streams, WDS und STBC erscheinen im bisher gezeigten `wlan_details`-Attribut nicht. Vor Ergänzung prüfen, ob die TR-064-/Mesh-Rohdaten diese Angaben zuverlässig liefern.
+- **Nächster technischer Prüfschritt:** Quelle und Bedeutung der WLAN-Raten und Signal-/Bandbreitenfelder im bestehenden AVM-Parser nachvollziehen, gezielte Tests erstellen; produktive HA-Installation erst nach gebündelten Änderungen erneut aktualisieren.
