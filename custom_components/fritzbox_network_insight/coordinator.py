@@ -309,6 +309,13 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             **result_details,
             "last_run": datetime.now(timezone.utc).isoformat(),
         }
+        # Manual SNMP discovery runs independently of the periodic host scan.
+        # Refresh derived port evidence immediately from the new observations.
+        # The next host scan will rebuild the same evidence from scratch.
+        if self.device_details and mac is not None:
+            add_lan_port_details(
+                self.device_details, self.discovery_results, self.fdb_observations
+            )
         self.async_update_listeners()
         if fdb_changed:
             async with self._topology_save_lock:
