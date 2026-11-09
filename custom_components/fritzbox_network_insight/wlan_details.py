@@ -24,6 +24,9 @@ def parse_wlan_list(xml: str | bytes) -> dict[str, dict]:
     result: dict[str, dict] = {}
     fields_map = {
         "X_AVM-DE_Speed": "wifi_speed_mbps",
+        "X_AVM-DE_SpeedRX": "wifi_speed_rx_mbps",
+        "X_AVM-DE_SpeedMax": "wifi_speed_max_mbps",
+        "X_AVM-DE_SpeedRXMax": "wifi_speed_rx_max_mbps",
         "X_AVM-DE_SignalStrength": "wifi_signal_strength",
         "AssociatedDeviceChannel": "wifi_channel",
         "X_AVM-DE_ChannelWidth": "wifi_channel_width",
@@ -45,6 +48,11 @@ def parse_wlan_list(xml: str | bytes) -> dict[str, dict]:
                         values[target_key] = number
             except ValueError:
                 continue
+        # The newer AVM XML schema can report the band explicitly.
+        # Never derive it from the WLANConfiguration instance number.
+        band = fields.get("X_AVM-DE_FrequencyBand", "").strip()
+        if band in {"2400", "5000", "6000"}:
+            values["wifi_frequency_band_mhz"] = int(band)
         guest = fields.get("AssociatedDeviceGuest", "").lower()
         if guest in {"0", "false"}:
             values["wifi_guest"] = False
