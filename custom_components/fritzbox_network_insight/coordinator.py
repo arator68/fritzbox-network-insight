@@ -20,9 +20,10 @@ from .discovery import DiscoveryManager
 from .discovery.snmp import SnmpDiscoveryAdapter
 from .mac_vendor import lookup_mac_vendor
 from .mesh import fetch_mesh, parse_mesh
+from .wlan_details import fetch_wlan_devices
 from .device_details import (
     DeviceDetails, details_from_host, add_snmp_details,
-    add_mesh_link_details, add_lldp_link_details,
+    add_mesh_link_details, add_lldp_link_details, add_wlan_details,
 )
 from .snmp_device_classifier import classify_snmp_system
 from .identification_store import IdentificationStore
@@ -74,6 +75,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self.entry = entry
         self.mesh_topology: dict[str, Any] = {"nodes": [], "links": [], "aliases": {}}
         self._mesh_last_attempt: float = 0.0
+        self._wlan_observations: dict[str, dict[str, dict[str, Any]]] = {}
         self._snmp_last_attempt: float = 0.0
         self._snmp_scan_lock = asyncio.Lock()
         self._dns_cache: dict[str, tuple[float, str | None]] = {}
@@ -387,6 +389,15 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             raise UpdateFailed("Unexpected error while retrieving FRITZ!Box hosts") from err
 
         indexed = {host["mac"]: host for host in hosts}
+        # WLAN observations are optional and must never fail the host scan.
+        try:
+            wlan = await self.hass.async_add_executor_job(
+                fetch_wlan_devices, self.client.host, self.client.username,
+                self.client.password, self.client.timeout,
+            )
+            self._wlan_observations = wlan
+        except Exception:
+            _LOGGER.debug("Optional WLAN device list unavailable", exc_info=True)
         await self._async_refresh_snmp_topology(indexed)
         # Mesh refresh every 15 minutes; keep the last successful result.
         now_mesh = monotonic()
@@ -471,6 +482,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             add_snmp_details(details, self.discovery_results.get(mac))
             add_mesh_link_details(details, self.mesh_topology.get("links", []))
             add_lldp_link_details(details, self.topology_observations)
+            add_wlan_details(details, self._wlan_observations.get(mac))
         _LOGGER.info("FRITZ!Box host scan completed: %d device(s) found", len(indexed))
         for host in indexed.values():
             _LOGGER.debug(
