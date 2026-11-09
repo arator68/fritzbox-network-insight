@@ -233,7 +233,7 @@ class FritzBoxHostStatusSensor(
         host = self._host
         if host is None:
             return {"mac": self._mac, "seen_in_latest_scan": False}
-        return {
+        attributes: dict[str, Any] = {
             "mac": host["mac"],
             "name": host["name"],
             "ip_address": host["ip_address"],
@@ -251,6 +251,20 @@ class FritzBoxHostStatusSensor(
             "interface_type": host["interface_type"],
             "seen_in_latest_scan": True,
         }
+        # Expose switch-port measurements only for endpoints explicitly
+        # identified as Ethernet. FDB reachability alone cannot establish
+        # whether a device uses LAN or WLAN.
+        details = self.coordinator.device_details.get(self._mac)
+        if details is not None:
+            lan_ports = [
+                dict(observation.value)
+                for observation in details.values("lan_switch_port")
+                if isinstance(observation.value, dict)
+                and observation.value.get("endpoint_access") == "ethernet"
+            ]
+            if lan_ports:
+                attributes["lan_switch_ports"] = lan_ports
+        return attributes
 
 
 class FritzBoxTopologySensor(
