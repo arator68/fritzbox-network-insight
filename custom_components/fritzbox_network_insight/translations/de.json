@@ -57,15 +57,23 @@
           "no_adapters_configured": "Keine Erkennungsmodule eingerichtet"
         }
       },
-      "wlan_mesh_peer_channel_width": {"name": "WLAN-Kanalbreite (Mesh-Gegenstelle)"},
-      "wlan_mesh_channel": {"name": "WLAN-Kanal (Mesh)"},
-      "wlan_mesh_signal_rx_raw": {"name": "WLAN-Empfangssignal (Mesh-Rohwert)"},
-      "wlan_mesh_signal_tx_raw": {"name": "WLAN-Sendesignal (Mesh-Rohwert)"},
+      "wlan_mesh_peer_channel_width": {
+        "name": "WLAN-Kanalbreite (Mesh-Gegenstelle)"
+      },
+      "wlan_mesh_channel": {
+        "name": "WLAN-Kanal (Mesh)"
+      },
+      "wlan_mesh_signal_rx_raw": {
+        "name": "WLAN-Empfangssignal (Mesh-Rohwert)"
+      },
+      "wlan_mesh_signal_tx_raw": {
+        "name": "WLAN-Sendesignal (Mesh-Rohwert)"
+      },
       "wlan_channel": {
-        "name": "WLAN-Kanal"
+        "name": "WLAN-Kanal (Quelle im Attribut)"
       },
       "wlan_channel_width": {
-        "name": "WLAN-Gerät Kanalbreite (TR-064)"
+        "name": "WLAN-Gerätekanalbreite (Quelle im Attribut)"
       },
       "wlan_mesh_channel_width": {
         "name": "Mesh-Funkkanalbreite"
@@ -77,7 +85,7 @@
         "name": "WLAN-Mesh-Datenrate TX (AVM-Rohfeld)"
       },
       "wlan_signal_strength": {
-        "name": "WLAN-Signalstärke (TR-064)"
+        "name": "WLAN-Signal (TR-064 / Mesh-Rohwert)"
       }
     }
   }
