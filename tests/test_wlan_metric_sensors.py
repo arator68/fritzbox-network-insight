@@ -40,7 +40,7 @@ class WlanMetricTests(unittest.TestCase):
         self.assertEqual(module.metric_observation(rows, "mesh_channel")["value"], 104)
         self.assertEqual(module.metric_observation(rows, "mesh_signal_rx_raw")["value"], -57)
         self.assertEqual(module.metric_observation(rows, "mesh_signal_tx_raw")["value"], -53)
-        self.assertIsNone(module.metric_observation(rows, "channel"))
+        self.assertEqual(module.metric_observation(rows, "channel")["value"], 104)
         self.assertIsNone(module.metric_observation([{"field": "mesh_rx_rcpi_raw", "value": 255}], "mesh_signal_rx_raw"))
 
     def test_peer_interface_width_is_not_ap_width(self):
@@ -50,8 +50,21 @@ class WlanMetricTests(unittest.TestCase):
         ]
         self.assertEqual(module.metric_observation(rows, "mesh_peer_channel_width")["value"], 80)
         self.assertEqual(module.metric_observation(rows, "mesh_channel_width")["value"], 160)
-        self.assertIsNone(module.metric_observation(rows, "channel_width"))
+        self.assertEqual(module.metric_observation(rows, "channel_width")["value"], 80)
         self.assertIsNone(module.metric_observation(rows[:1], "mesh_peer_channel_width"))
+        self.assertIsNone(module.metric_observation(rows[:1], "channel_width"))
+
+    def test_tr064_preferred_and_mesh_fallback_source_preserved(self):
+        rows = [
+            {"field": "mesh_wifi_channel", "value": 104, "source": "avm_mesh"},
+            {"field": "wifi_channel", "value": 100, "source": "tr064"},
+            {"field": "mesh_rx_rcpi_raw", "value": -57, "source": "avm_mesh"},
+        ]
+        self.assertEqual(module.metric_observation(rows, "channel")["value"], 100)
+        signal = module.metric_observation(rows, "signal_strength")
+        self.assertEqual(signal["value"], -57)
+        self.assertEqual(signal["source_field"], "mesh_rx_rcpi_raw")
+        self.assertEqual(signal["measurement_scope"], "mesh_signal_raw")
 
     def test_zero_rate_is_valid(self):
         self.assertEqual(module.metric_observation([{"field": "wifi_rate_rx_mbps", "value": 0}], "rx_rate")["value"], 0)
