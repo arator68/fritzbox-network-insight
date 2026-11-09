@@ -56,6 +56,36 @@
           "no_targets": "No targets",
           "no_adapters_configured": "No discovery adapters configured"
         }
+      },
+      "wlan_mesh_peer_channel_width": {
+        "name": "WLAN channel width"
+      },
+      "wlan_mesh_channel": {
+        "name": "WLAN channel"
+      },
+      "wlan_mesh_signal_rx_raw": {
+        "name": "WLAN receive signal"
+      },
+      "wlan_mesh_signal_tx_raw": {
+        "name": "WLAN transmit signal"
+      },
+      "wlan_channel": {
+        "name": "WLAN channel"
+      },
+      "wlan_channel_width": {
+        "name": "WLAN channel width"
+      },
+      "wlan_mesh_channel_width": {
+        "name": "Mesh radio channel width"
+      },
+      "wlan_rx_rate": {
+        "name": "WLAN data rate RX"
+      },
+      "wlan_tx_rate": {
+        "name": "WLAN data rate TX"
+      },
+      "wlan_signal_strength": {
+        "name": "WLAN signal strength"
       }
     }
   }

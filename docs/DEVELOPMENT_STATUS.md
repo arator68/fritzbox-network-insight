@@ -225,3 +225,17 @@ Server-3
 - `wifi_channel_width` aus der TR-064-WLAN-Geräteliste bleibt unter dem bisherigen Namen erhalten und bekommt `measurement_scope: tr064_wlan_device`. Die genaue Semantik des AVM-Feldes wird nicht über die Quelle hinaus behauptet; insbesondere wird es nicht mit der Mesh-Funkzellenbreite gleichgesetzt.
 - Regressionstest `test_mesh_and_tr064_channel_widths_remain_distinct`: 80 (TR-064) vs. 160 MHz (Mesh) bleiben als getrennte Werte inklusive Quelle, Zeitstempel und Messbereich sichtbar. Der bestehende Metadatentest wurde an den eindeutigen Mesh-Feldnamen angepasst.
 - **GitHub-CI für diese neuen Commits noch nicht bestätigt.** Kein HA-Neustart nötig; Installation erst nach Tests und gebündeltem PR.
+
+
+## 20. 2026-11-09 – WLAN-Metriksensoren: PR #38, HA-Praxistests erfolgreich
+
+- [PR #38 – WLAN-Metriksensoren](https://github.com/arator68/fritzbox-network-insight/pull/38) auf Basis von `feature/wlan-metric-sensors` gegen `develop`.
+- Separate WLAN-Sensoren für Kanal, Gerätekanalbreite, Signalstärke, RX-/TX-Datenraten sowie eigenständige Mesh-Funkkanalbreite. Die allgemeine Sensorwahl bevorzugt gültige TR-064-Messungen und verwendet nur passend zugeordnete Mesh-Beobachtungen als Fallback. Quelle, Rohfeld und Messbereich sind in den Sensorattributen nachvollziehbar.
+- WLAN-Gerätekanalbreite wird aus der eindeutig verknüpften Mesh-Gegenstellenschnittstelle gelesen; sie wird **nicht** aus der Kanalbreite der Mesh-Funkzelle abgeleitet. Alexa-Schlafzimmer: **80 MHz Gerätekanalbreite** bei **160 MHz Mesh-Funkkanalbreite**, Kanal 104.
+- Die RX-/TX-Raten bleiben **AVM-Rohfeldrichtungen**, nicht ungesichert als Download/Upload aus Sicht des Clients bezeichnet. Beispiel Alexa: RX 0, TX 433 Mbit/s; Maximalraten 433/433. Zusätzliche read-only Link-Endpunktdiagnostik bestätigt Knotenreihenfolge, nicht die Richtung der FRITZ!Box-Oberflächenpfeile.
+- Redundante Mesh-Sensoren für Kanal, Gerätekanalbreite und Empfangssignal werden aus der regulären Geräteansicht entfernt; die ursprünglichen Beobachtungen verbleiben in `wlan_details` am Statussensor. Bei fehlender Messung werden keine neuen Sensoren angelegt; alte, nicht verfügbare WLAN-Sensorregistrierungen werden gezielt bereinigt und bei später vorhandenen Messungen wieder angelegt.
+- Benutzerfreundliche Anzeigenamen ohne technische Klammerzusätze. WLAN-Signalstärke erhält `dBm` **nur bei bestätigtem Mesh-Empfangsfeld**; unbestätigte TR-064-Signale erhalten keine pauschale Einheit.
+- **HA-Praxistests durch Nutzer bestätigt:** Alexa-Schlafzimmer zeigt sieben bereinigte WLAN-Sensoren, darunter Kanal 104, Kanalbreite 80 MHz, Signal −57 dBm. Steckdose-Trockner zeigt nach Bereinigung nur RX 0, TX 72 Mbit/s, Kanal 1 und Signal −60 dBm; vorherige nicht verfügbare Doppel-/Alt-Sensoren sind verschwunden. Auch Steckdosenleiste-PC und andere Geräte wurden zur Kontrolle gezeigt.
+- **CI:** GitHub-Checks für PR-Head `ff037b74` (`Static validation`) erfolgreich. **Topologie, MAC-Gerätezuordnung, LLDP, SNMP und physische Verbindungslogik wurden für diesen WLAN-Arbeitsabschnitt nicht verändert.**
+- **Restpunkte:** Interpretation von RX/TX gegenüber den Pfeilen der FRITZ!Box-Oberfläche nicht abschließend belegt; `WLAN-Sendesignal` noch ohne bestätigte Einheit; optionale Kanalbreiten können bei einzelnen Geräten fehlen. Keine Werte erfinden oder Richtungen vertauschen.
+- **Freigabe:** Nutzer hat am 09.11.2026 ausdrücklich das Zusammenführen von PR #38 nach `develop` und die Aktualisierung dieser Datei beauftragt. Merge-Status nach GitHub-Merge verifizieren.

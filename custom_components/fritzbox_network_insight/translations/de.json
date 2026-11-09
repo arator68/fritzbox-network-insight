@@ -56,6 +56,36 @@
           "no_targets": "Keine Zielgeräte",
           "no_adapters_configured": "Keine Erkennungsmodule eingerichtet"
         }
+      },
+      "wlan_mesh_peer_channel_width": {
+        "name": "WLAN-Kanalbreite"
+      },
+      "wlan_mesh_channel": {
+        "name": "WLAN-Kanal"
+      },
+      "wlan_mesh_signal_rx_raw": {
+        "name": "WLAN-Empfangssignal"
+      },
+      "wlan_mesh_signal_tx_raw": {
+        "name": "WLAN-Sendesignal"
+      },
+      "wlan_channel": {
+        "name": "WLAN-Kanal"
+      },
+      "wlan_channel_width": {
+        "name": "WLAN-Kanalbreite"
+      },
+      "wlan_mesh_channel_width": {
+        "name": "Mesh-Funkkanalbreite"
+      },
+      "wlan_rx_rate": {
+        "name": "WLAN-Datenrate RX"
+      },
+      "wlan_tx_rate": {
+        "name": "WLAN-Datenrate TX"
+      },
+      "wlan_signal_strength": {
+        "name": "WLAN-Signalstärke"
       }
     }
   }

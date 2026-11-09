@@ -85,6 +85,35 @@ def extract_mesh_wlan_details(
                     continue
                 seen.add(signature)
                 values: dict[str, Any] = {"peer_node_uid": node_uid}
+                # Endpoint orientation is diagnostic only; do not relabel rates
+                # as client download/upload without validated AVM semantics.
+                values["mesh_rate_link_owner_is_node_1"] = node_uid == a
+                values["mesh_rate_client_is_node_1"] = peer_uid == a
+                values["mesh_rate_link_has_source_target"] = (
+                    "source" in link and "target" in link
+                )
+                # Inspect the endpoint's own WLAN interface independently of
+                # the AP/repeater radio. A peer interface is accepted only
+                # when it explicitly references this very same Mesh link.
+                # Never use the AP channel width as the client's width.
+                if link_uid and isinstance(peer_interfaces, list):
+                    for peer_interface in peer_interfaces:
+                        if not isinstance(peer_interface, dict) or str(peer_interface.get("type", "")).upper() != "WLAN":
+                            continue
+                        peer_links = peer_interface.get("node_links", [])
+                        if not isinstance(peer_links, list) or not any(
+                            isinstance(candidate, dict)
+                            and str(candidate.get("uid") or candidate.get("id") or "") == link_uid
+                            for candidate in peer_links
+                        ):
+                            continue
+                        peer_info = peer_interface.get("current_channel_info")
+                        if isinstance(peer_info, dict) and peer_info.get("channel_width") is not None:
+                            values["mesh_peer_interface_channel_width_raw"] = peer_info["channel_width"]
+                        peer_channel = peer_interface.get("current_channel")
+                        if isinstance(peer_channel, int) and peer_channel > 0:
+                            values["mesh_peer_interface_channel"] = peer_channel
+                        break
                 for source, target in (
                     ("rx_rcpi", "mesh_rx_rcpi_raw"),
                     ("tx_rcpi", "mesh_tx_rcpi_raw"),
