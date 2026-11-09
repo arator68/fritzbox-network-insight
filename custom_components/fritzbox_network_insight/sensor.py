@@ -8,6 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
@@ -20,6 +21,11 @@ from .discovery_result import ManualDiscoveryResultSensor
 from .wlan_device_attributes import wlan_details_attribute
 from .wlan_metric_sensors import WLAN_METRICS, metric_observation
 
+VISIBLE_WLAN_METRICS = (
+    "channel", "channel_width", "signal_strength",
+    "mesh_channel_width", "rx_rate", "tx_rate", "mesh_signal_tx_raw",
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -30,6 +36,30 @@ async def async_setup_entry(
     coordinator: FritzBoxDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     known_macs: set[str] = set()
     wlan_macs: set[str] = set()
+    registered_wlan_metrics: set[tuple[str, str]] = set()
+    registry = er.async_get(hass)
+    obsolete = ("mesh_channel", "mesh_peer_channel_width", "mesh_signal_rx_raw")
+    for registered in list(er.async_entries_for_config_entry(registry, entry.entry_id)):
+        if registered.domain == "sensor" and registered.platform == DOMAIN and any(
+            registered.unique_id.endswith(f"_wlan_{key}") for key in obsolete
+        ):
+            registry.async_remove(registered.entity_id)
+
+    def _wlan_entities(mac: str) -> list[SensorEntity]:
+        host = (coordinator.data or {}).get(mac)
+        if not _is_wlan(host) or host.get("active") is not True:
+            return []
+        details = coordinator.device_details.get(mac)
+        if details is None:
+            return []
+        rows = wlan_details_attribute(details, host.get("interface_type"))
+        result: list[SensorEntity] = []
+        for key in VISIBLE_WLAN_METRICS:
+            identity = (mac, key)
+            if identity not in registered_wlan_metrics and metric_observation(rows, key) is not None:
+                registered_wlan_metrics.add(identity)
+                result.append(FritzBoxWlanMetricSensor(coordinator, mac, key))
+        return result
 
     # Migrate registered legacy IDs before creating/adding entities.
     for mac, host in sorted((coordinator.data or {}).items()):
@@ -64,7 +94,7 @@ async def async_setup_entry(
         entities.append(FritzBoxHostStatusSensor(coordinator, entry, mac))
         entities.append(ManualDiscoveryResultSensor(coordinator, entry, mac))
         if _is_wlan((coordinator.data or {}).get(mac)):
-            entities.extend(FritzBoxWlanMetricSensor(coordinator, mac, key) for key in WLAN_METRICS)
+            entities.extend(_wlan_entities(mac))
             wlan_macs.add(mac)
         known_macs.add(mac)
     async_add_entities(entities)
@@ -102,7 +132,9 @@ async def async_setup_entry(
                 new_entities.append(ManualDiscoveryResultSensor(coordinator, entry, mac))
             if mac not in wlan_macs and _is_wlan((coordinator.data or {}).get(mac)):
                 wlan_macs.add(mac)
-                new_entities.extend(FritzBoxWlanMetricSensor(coordinator, mac, key) for key in WLAN_METRICS)
+                new_entities.extend(_wlan_entities(mac))
+        for mac in sorted(wlan_macs):
+            new_entities.extend(_wlan_entities(mac))
         if new_entities:
             async_add_entities(new_entities)
 
