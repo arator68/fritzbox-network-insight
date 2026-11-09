@@ -195,3 +195,10 @@ Server-3
 - `tests/test_wlan_device_attributes.py` erweitert: gezielte positive Tests für tatsächlich vorhandene Funkfelder, Quell-/Zeitstempel-/Scope-Erhalt, Ausschluss anderer Rohdaten und Negativtest gegen erfundene Band-/Standardangaben bei Kanal 1.
 - **Tests/CI des neuen Branches noch nicht bestätigt.** Der vorangegangene PR #35 ist bereits gemergt und in HA getestet; die neue Erweiterung ist separat.
 - **Nächster Schritt:** GitHub-Tests prüfen, reale Mesh-Diagnose auf Verfügbarkeit dieser Funkfelder untersuchen, dann bei Bedarf weitere Änderungen bündeln. Kein HA-Neustart allein für diesen Commit.
+
+## 16. 2026-11-09 – Tests für WLAN-Funkmetadaten bestätigt
+
+- Nutzer meldet **„tests ok“** für den Branch `feature/wlan-radio-metadata` nach den Änderungen an Attribut-Whitelist und Regressionstests. Die GitHub-Tests sind damit laut Rückmeldung erfolgreich.
+- Die Tests belegen das Verhalten mit definierten Beispieldaten, **nicht**, dass die FRITZ!Box des Nutzers diese optionalen Funkmetadaten im realen Mesh-Payload liefert.
+- Nächster Validierungsschritt: vorhandene reale AVM-Mesh-Diagnose bzw. vorhandene Geräteattribute auf `mesh_wlan_link_radio_fields`, `mesh_wlan_interface_radio_fields` und `mesh_wlan_channel_radio_fields` prüfen; fehlende Felder nicht erraten.
+- Noch kein Merge, keine neue Home-Assistant-Installation und kein Neustart erforderlich.
