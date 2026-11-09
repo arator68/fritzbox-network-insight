@@ -30,6 +30,34 @@ def mac_from_oid_suffix(suffix: str) -> str | None:
     return ":".join(f"{part:02X}" for part in numbers)
 
 
+def is_learned_status(value: str | None) -> bool:
+    """Accept numeric or MIB-enumerated representations of learned(3)."""
+    if value is None:
+        return False
+    normalized = str(value).strip().lower()
+    return normalized in {"3", "learned", "learned(3)", "3(learned)"}
+
+
+def status_summary(
+    port_rows: list[tuple[str, str]],
+    status_rows: list[tuple[str, str]],
+) -> dict[str, int]:
+    """Count filtering outcomes without exposing device MAC addresses."""
+    statuses = dict(status_rows)
+    summary = {"status_missing": 0, "status_learned": 0, "status_other": 0}
+    if not status_rows:
+        return summary
+    for suffix, _ in port_rows:
+        value = statuses.get(suffix)
+        if value is None:
+            summary["status_missing"] += 1
+        elif is_learned_status(value):
+            summary["status_learned"] += 1
+        else:
+            summary["status_other"] += 1
+    return summary
+
+
 def correlate_fdb(
     port_rows: list[tuple[str, str]],
     status_rows: list[tuple[str, str]],
@@ -47,7 +75,7 @@ def correlate_fdb(
         if mac is None or mac in seen or not bridge_port.isdecimal():
             continue
         # dot1dTpFdbStatus: 3 = learned. Exclude self/static/invalid.
-        if statuses and statuses.get(suffix) != "3":
+        if statuses and not is_learned_status(statuses.get(suffix)):
             continue
         seen.add(mac)
         if_index = bridge.get(bridge_port, "")
@@ -84,7 +112,7 @@ def correlate_q_fdb(
         mac = mac_from_oid_suffix(".".join(parts[1:]))
         if mac is None or not port.isdecimal() or int(port) == 0:
             continue
-        if statuses and statuses.get(suffix) != "3":
+        if statuses and not is_learned_status(statuses.get(suffix)):
             continue
         if (vlan, mac) in seen:
             continue
@@ -152,6 +180,7 @@ async def async_read_fdb(engine: Any, user: Any, target: Any) -> dict[str, Any]:
         raw_count = len(q_ports)
         status_count = len(q_statuses or [])
         truncated = raw_count >= MAX_ROWS or len(observations) >= MAX_RESULTS
+        summary = status_summary(q_ports, q_statuses or [])
         return {
             "status": "ok",
             "source": source,
@@ -159,6 +188,7 @@ async def async_read_fdb(engine: Any, user: Any, target: Any) -> dict[str, Any]:
             "count": len(observations),
             "raw_port_count": raw_count,
             "raw_status_count": status_count,
+            "status_summary": summary,
             "truncated": truncated,
         }
 
@@ -187,5 +217,6 @@ async def async_read_fdb(engine: Any, user: Any, target: Any) -> dict[str, Any]:
         "count": len(observations),
         "raw_port_count": raw_count,
         "raw_status_count": len(statuses or []),
+        "status_summary": status_summary(ports or [], statuses or []),
         "truncated": raw_count >= MAX_ROWS or len(observations) >= MAX_RESULTS,
     }
