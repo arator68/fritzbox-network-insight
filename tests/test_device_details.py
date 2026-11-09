@@ -92,6 +92,20 @@ class TestDeviceDetails(unittest.TestCase):
         self.assertEqual(details.values("lldp_observed_link")[0].source, "lldp")
         self.assertFalse(details.available("physical_cable"))
 
+    def test_wlan_values_preserve_instance_and_do_not_infer_band(self):
+        details = model.build_device_details("68:F6:3B:6B:48:0A", {})
+        model.add_wlan_details(details, {
+            "wlan_configuration_2": {
+                "wifi_speed_mbps": 433, "wifi_signal_strength": 68,
+                "wifi_channel": 44, "wifi_guest": False,
+            }
+        })
+        self.assertEqual(details.values("wifi_channel")[0].source, "tr064_wlan_configuration_2")
+        self.assertEqual(details.values("wifi_speed_mbps")[0].value, 433)
+        self.assertIs(details.values("wifi_guest")[0].value, False)
+        self.assertFalse(details.available("wifi_band"))
+        self.assertFalse(details.available("wifi_signal_rx_dbm"))
+
     def test_invalid_identity_and_missing_source_rejected(self):
         with self.assertRaises(ValueError):
             model.build_device_details("invalid", {"tr064": {"name": "x"}})
