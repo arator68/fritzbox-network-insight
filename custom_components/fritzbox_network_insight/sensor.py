@@ -181,6 +181,16 @@ class FritzBoxWlanMetricSensor(
         return super().available and self._observation is not None
 
     @property
+    def native_unit_of_measurement(self) -> str | None:
+        """Use dBm only for the verified Mesh RX signal, not TR-064 values."""
+        if self._metric == "signal_strength":
+            observation = self._observation
+            if observation and observation.get("source_field") == "mesh_rx_rcpi_raw":
+                return "dBm"
+            return None
+        return WLAN_METRICS[self._metric][2]
+
+    @property
     def native_value(self) -> int | float | None:
         observation = self._observation
         return observation["value"] if observation else None
