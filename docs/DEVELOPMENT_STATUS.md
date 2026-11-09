@@ -94,3 +94,11 @@ Server-3
 
 ---
 *Erstfassung nachträglich aus dem bisherigen Chat und dem GitHub-Stand vom 08.11.2026 erstellt. Sie ist eine Übergabe, kein Testprotokoll und keine Merge-Freigabe.*
+
+## 7. 2026-11-09 – Karten-Datenmodell (implementiert, HA-Test ausstehend)
+
+- Nutzer-Diagnose `topology_diagnostics` bestätigt eine manuell bestätigte SG3428-Port-2-Verbindung zum TL-SG1024DE (`consistent_with_fdb`) und einen FDB-basierten Zweig mit Server-3. Die tatsächliche Server-3-Direktverbindung bleibt nicht per FDB bewiesen.
+- `topology/view_model.py` ergänzt: MAC-basierte, einmalige Knoten; bestätigte LAN-Kanten aus LLDP/manueller Bestätigung; WLAN-Kanten aus AVM Mesh; separate Mesh-LAN-Beobachtungen und FDB-Zweigzugehörigkeit. Ein Repeater ohne aufgelösten Uplink bleibt als Knoten sichtbar, ohne erfundene Kante.
+- Neue read-only Aktion `fritzbox_network_insight.topology_view` liefert das Karten-Datenmodell. Bei mehreren konfigurierten FRITZ!Boxen ist `entry_id` erforderlich. Die Aktion ist in `services.yaml` dokumentiert.
+- `tests/test_topology_view.py` enthält gezielte Regressionstests für unbekannte Repeater-Uplinks, bestätigte Switch-Kanten und FDB-Zweigmitgliedschaft.
+- **Noch nicht abgeschlossen:** CI-Prüfung, Ausführung in Home Assistant und grafische Lovelace-Karte. Diese Änderung liefert zunächst die geprüfbare Backend-Schnittstelle, **noch keine fertige grafische HA-Karte**. PR #32 bleibt Draft und darf nicht allein aufgrund dieser Änderungen gemergt werden.
