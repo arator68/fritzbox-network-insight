@@ -43,6 +43,16 @@ class WlanMetricTests(unittest.TestCase):
         self.assertIsNone(module.metric_observation(rows, "channel"))
         self.assertIsNone(module.metric_observation([{"field": "mesh_rx_rcpi_raw", "value": 255}], "mesh_signal_rx_raw"))
 
+    def test_peer_interface_width_is_not_ap_width(self):
+        rows = [
+            {"field": "mesh_radio_channel_width", "value": "160 MHz", "measurement_scope": "mesh_radio_channel"},
+            {"field": "mesh_peer_interface_channel_width_raw", "value": "80 MHz", "source": "avm_mesh"},
+        ]
+        self.assertEqual(module.metric_observation(rows, "mesh_peer_channel_width")["value"], 80)
+        self.assertEqual(module.metric_observation(rows, "mesh_channel_width")["value"], 160)
+        self.assertIsNone(module.metric_observation(rows, "channel_width"))
+        self.assertIsNone(module.metric_observation(rows[:1], "mesh_peer_channel_width"))
+
     def test_zero_rate_is_valid(self):
         self.assertEqual(module.metric_observation([{"field": "wifi_rate_rx_mbps", "value": 0}], "rx_rate")["value"], 0)
 
