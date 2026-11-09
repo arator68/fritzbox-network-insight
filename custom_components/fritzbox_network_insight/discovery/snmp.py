@@ -104,6 +104,7 @@ class SnmpDiscoveryAdapter:
                 "fdb_source": fdb["source"],
                 "fdb_raw_port_count": str(fdb["raw_port_count"]),
                 "fdb_raw_status_count": str(fdb["raw_status_count"]),
+                "fdb_status_summary": json.dumps(fdb.get("status_summary", {})),
                 "fdb_entry_count": str(fdb["count"]),
                 "fdb_truncated": str(fdb["truncated"]).lower(),
                 "fdb_entries": json.dumps(fdb["entries"], ensure_ascii=False),
