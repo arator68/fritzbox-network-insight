@@ -57,6 +57,9 @@
           "no_adapters_configured": "Keine Erkennungsmodule eingerichtet"
         }
       },
+      "wlan_mesh_channel": {"name": "WLAN-Kanal (Mesh)"},
+      "wlan_mesh_signal_rx_raw": {"name": "WLAN-Empfangssignal (Mesh-Rohwert)"},
+      "wlan_mesh_signal_tx_raw": {"name": "WLAN-Sendesignal (Mesh-Rohwert)"},
       "wlan_channel": {
         "name": "WLAN-Kanal"
       },
