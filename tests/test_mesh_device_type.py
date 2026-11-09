@@ -50,7 +50,7 @@ class MeshDeviceTypeTests(unittest.TestCase):
             REPEATER: {"name": "Repeater", "device_type": "switch"},
         })["nodes"]}
         self.assertEqual(nodes[REPEATER]["device_type"], "switch")
-        self.assertNotIn("device_type_source", nodes[REPEATER])
+        self.assertIsNone(nodes[REPEATER]["device_type_source"])
 
     def test_view_exposes_type_and_provenance(self):
         snapshot = self.build()
