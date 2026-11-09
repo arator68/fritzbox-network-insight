@@ -137,6 +137,7 @@ SNMP_SUMMARY_FIELDS = {
     "lldp_neighbor_count": "lldp_neighbor_count",
     "fdb_entry_count": "fdb_entry_count",
     "fdb_raw_port_count": "fdb_raw_port_count",
+    "fdb_raw_status_count": "fdb_raw_status_count",
     "fdb_status": "fdb_status",
     "fdb_truncated": "fdb_truncated",
 }
@@ -155,6 +156,16 @@ def add_snmp_details(
             observed_at=observed_at,
         )
 
+
+    try:
+        fdb_summary = json.loads(discovery.get("fdb_status_summary", "{}"))
+    except (TypeError, ValueError):
+        fdb_summary = {}
+    if isinstance(fdb_summary, dict) and fdb_summary:
+        details.add(
+            "fdb_status_summary", fdb_summary,
+            source="snmp_v3", observed_at=observed_at,
+        )
 
     # Per-port IF-MIB data belongs to the SNMP-managed switch itself.
     # It is not evidence of a direct connection to any learned FDB MAC.
