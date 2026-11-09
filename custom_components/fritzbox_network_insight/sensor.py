@@ -17,6 +17,7 @@ from .entity_id_migration import (
     migrate_legacy_device_entity_id,
 )
 from .discovery_result import ManualDiscoveryResultSensor
+from .wlan_device_attributes import wlan_details_attribute
 
 
 async def async_setup_entry(
@@ -264,6 +265,9 @@ class FritzBoxHostStatusSensor(
             ]
             if lan_ports:
                 attributes["lan_switch_ports"] = lan_ports
+            wlan_values = wlan_details_attribute(details, host.get("interface_type"))
+            if wlan_values:
+                attributes["wlan_details"] = wlan_values
         return attributes
 
 
