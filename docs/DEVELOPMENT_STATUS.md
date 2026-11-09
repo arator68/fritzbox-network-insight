@@ -1,11 +1,11 @@
 # Entwicklungsstand – FRITZ!Box Network Insight
 
-**Stand:** 2026-11-08 (rekonstruiert aus dem letzten Entwicklungsdialog und GitHub)  
+**Stand:** 2026-11-09 (fortlaufend aktualisiert; ältere Abschnitte als historische Momentaufnahme erhalten)  
 **Status:** Laufende Entwicklung; keine Release- oder Merge-Freigabe  
 **Verbindliche Anforderungen:** [SPECIFICATION.md](SPECIFICATION.md)  
 **Repository:** https://github.com/arator68/fritzbox-network-insight  
-**Aktueller Arbeitsbranch:** `feature/avm-mesh-topology`  
-**Pull Request:** [#32 – Add automatic AVM Mesh observations to Network Insight](https://github.com/arator68/fritzbox-network-insight/pull/32) → `develop`
+**Aktueller Arbeitsbranch:** `feature/wlan-device-details` (Ausgangsbasis `develop`)  
+**Historischer Pull Request:** [#32 – Add automatic AVM Mesh observations to Network Insight](https://github.com/arator68/fritzbox-network-insight/pull/32) → `develop` (Status in Abschnitt 1 ist historisch und nicht der aktuelle Arbeitsauftrag)
 
 > **Zweck:** Diese Datei dokumentiert den tatsächlichen Arbeitsstand und die nächsten Schritte für die Fortsetzung in einem neuen Chat. Sie ergänzt die Spezifikation, ersetzt sie nicht. Angaben aus dem früheren Chat sind als solche gekennzeichnet; sie sind nicht automatisch durch CI oder Quellcode verifiziert.
 
@@ -110,3 +110,36 @@ Server-3
 - Bestehende Klassifizierungsquelle und Konfidenz werden aus den Hostdaten übernommen; `topology/view_model.py` gibt diese Metadaten weiter.
 - `tests/test_mesh_device_type.py` ergänzt drei Regressionstests (Mesh-Rollen, Vorrang bestehender Klassifizierung, Ausgabe in der Topologieansicht).
 - **Offen:** GitHub-CI und anschließender Home-Assistant-Test der neuen `topology_view`-Ausgabe. Keine Änderung an Netzwerkkarte oder Verkabelungserkennung. PR #32 bleibt Draft.
+
+## 9. 2026-11-09 – LAN-Gerätedetails abgeschlossen, WLAN-Gerätedetails in Entwicklung
+
+### LAN-Gerätedetails (in `develop`)
+
+- PR [#34 – LAN-Gerätedetails](https://github.com/arator68/fritzbox-network-insight/pull/34) wurde nach grünen Prüfungen nach `develop` übernommen.
+- `lan_device_details.py` reichert MAC-bezogene Geräteinformationen mit IF-MIB-/FDB-Beobachtungen an; der vorhandene Statussensor zeigt `lan_switch_ports` **nur für explizit als Ethernet identifizierte Geräte**.
+- `connection: reachable_via_port` ist eine FDB-Erreichbarkeitsaussage, **kein Nachweis eines direkten Kabels**. Geschwindigkeit und Betriebsstatus beziehen sich auf den gemeldeten Switch-Port.
+- In Home Assistant wurde der Desktop-PC an `gigabitEthernet 1/0/13` mit 1000 Mbit/s geprüft; ein WLAN-Luftreiniger zeigte korrekt kein `lan_switch_ports`-Attribut.
+
+### WLAN-Gerätedetails (aktueller Feature-Branch)
+
+- Arbeitsbranch: `feature/wlan-device-details` von `develop`; **noch nicht nach `develop` gemergt**.
+- Diagnose `fritzbox_network_insight.device_details_diagnostics` vom 09.11.2026: 72 Geräte; WLAN-Daten aus AVM Mesh und teilweise TR-064 vorhanden. Unterschiede zwischen Quellen sind real: z. B. Dreame-Saugroboter mit Mesh-Kanal 1 und TR-064-Kanal 11. RX-Raten können ausdrücklich 0 sein.
+- Neue Datei `custom_components/fritzbox_network_insight/wlan_device_attributes.py` bereitet ausschließlich vorhandene WLAN-Beobachtungen für das Attribut `wlan_details` auf, einschließlich `field`, `value`, `source` und `observed_at`. Mesh-WLAN-Peer-MAC wird als gemeldete Beobachtung, nicht als bestätigte physische Verbindung ausgegeben.
+- `sensor.py` ergänzt `wlan_details` am bestehenden Statussensor nur bei ausdrücklich als WLAN klassifizierten Hosts. Keine neuen Entitäten, keine Entity-ID- oder Anzeigenamenänderungen; bestehende LAN-Attribute bleiben erhalten.
+- `tests/test_wlan_device_attributes.py` enthält Regressionstests für abweichende Quellen/Kanäle, Nullwerte, rohe Signalwerte, LAN-Abgrenzung und fehlende Messungen.
+- **CI:** Nutzer meldete „test ok“; damit sind die GitHub-Prüfungen laut Nutzer grün. **Home-Assistant-Praxistest steht aus**; die Änderungen wurden noch nicht als installiert bestätigt.
+
+### Vereinbarter Entwicklungs- und Testablauf
+
+- Python-Änderungen an Custom Integrations benötigen für einen verlässlichen Test üblicherweise einen Home-Assistant-Neustart. Deshalb **Änderungen und GitHub-Tests bündeln**, statt nach jedem Commit neu zu starten.
+- Erst nach Abschluss eines sinnvollen Entwicklungsabschnitts einmal auf der produktiven HA-Instanz installieren und prüfen; bis dahin produktives HA unangetastet lassen.
+- `docs/DEVELOPMENT_STATUS.md` nach abgeschlossenen Schritten und wesentlichen Statuswechseln fortschreiben, dabei CI, HA-Praxistest und Merge-Status klar trennen.
+
+### Nächster Schritt
+
+1. WLAN-Attributmodell und Tests im Feature-Branch abschließend prüfen, insbesondere die Größe der HA-Statusattribute und die korrekte Quellzuordnung bei mehreren Mesh-Beobachtungen.
+2. Weitere kleine Verbesserungen nach Möglichkeit vor dem nächsten gemeinsamen HA-Praxistest bündeln.
+3. Nach einem einzigen HA-Neustart die WLAN-Statusattribute an einem konkreten Gerät (z. B. `sensor.fritzbox_network_insight_004b12694d2c_status`) prüfen.
+4. Erst danach über PR/Merge nach `develop` entscheiden.
+
+**Hinweis:** Abschnitte 1–8 dokumentieren frühere Zwischenstände und sind nicht als aktuelle PR-/CI-Aussagen zu lesen. Insbesondere die damaligen Aussagen zu PR #32 sind historische Momentaufnahmen.
