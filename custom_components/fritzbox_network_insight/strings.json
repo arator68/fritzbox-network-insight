@@ -57,6 +57,7 @@
           "no_adapters_configured": "No discovery adapters configured"
         }
       },
+      "wlan_mesh_peer_channel_width": {"name": "Mesh peer WLAN interface channel width"},
       "wlan_mesh_channel": {"name": "Mesh WLAN radio channel"},
       "wlan_mesh_signal_rx_raw": {"name": "Mesh received signal (raw)"},
       "wlan_mesh_signal_tx_raw": {"name": "Mesh transmitted signal (raw)"},
