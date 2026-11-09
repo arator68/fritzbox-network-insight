@@ -164,6 +164,21 @@ def add_snmp_details(
         source="snmp_v3",
         observed_at=observed_at,
     )
+    details.add(
+        "snmp_port_telemetry_reason",
+        discovery.get("port_telemetry_reason"),
+        source="snmp_v3",
+        observed_at=observed_at,
+    )
+    try:
+        column_status = json.loads(discovery.get("port_telemetry_columns", "{}"))
+    except (TypeError, ValueError):
+        column_status = {}
+    if isinstance(column_status, dict) and column_status:
+        details.add(
+            "snmp_port_telemetry_columns", column_status,
+            source="snmp_v3", observed_at=observed_at,
+        )
     if discovery.get("port_telemetry_status") == "ok":
         try:
             ports = json.loads(discovery.get("port_telemetry", "[]"))
