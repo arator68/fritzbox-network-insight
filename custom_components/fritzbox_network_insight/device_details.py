@@ -119,3 +119,81 @@ def details_from_host(host: Mapping[str, Any]) -> DeviceDetails:
             if raw_key in raw:
                 details.add(semantic_key, raw[raw_key], source="tr064")
     return details
+
+
+SNMP_SYSTEM_FIELDS = {
+    "sys_descr": "snmp_system_description",
+    "sys_object_id": "snmp_system_object_id",
+    "sys_name": "snmp_system_name",
+}
+# These are discovery-result summaries, not current per-port telemetry.
+SNMP_SUMMARY_FIELDS = {
+    "lldp_neighbor_count": "lldp_neighbor_count",
+    "fdb_entry_count": "fdb_entry_count",
+    "fdb_raw_port_count": "fdb_raw_port_count",
+    "fdb_status": "fdb_status",
+    "fdb_truncated": "fdb_truncated",
+}
+
+
+def add_snmp_details(
+    details: DeviceDetails, discovery: Mapping[str, Any] | None
+) -> None:
+    """Append actual SNMP discovery values without copying secrets or raw dumps."""
+    if not isinstance(discovery, Mapping) or "snmp" not in discovery.get("protocols", ()):
+        return
+    observed_at = discovery.get("last_run")
+    for raw_key, key in {**SNMP_SYSTEM_FIELDS, **SNMP_SUMMARY_FIELDS}.items():
+        details.add(
+            key, discovery.get(raw_key), source="snmp_v3",
+            observed_at=observed_at,
+        )
+
+
+def add_mesh_link_details(
+    details: DeviceDetails, links: list[dict[str, Any]]
+) -> None:
+    """Retain AVM-reported adjacent links without claiming direct cabling."""
+    for link in links:
+        if not isinstance(link, dict):
+            continue
+        if details.mac not in (link.get("source_mac"), link.get("target_mac")):
+            continue
+        peer = link.get("target_mac") if link.get("source_mac") == details.mac else link.get("source_mac")
+        details.add(
+            "mesh_reported_link",
+            {
+                "peer_mac": peer,
+                "link_type": link.get("link_type"),
+                "link_state": link.get("link_state"),
+            },
+            source="avm_mesh",
+        )
+
+
+def add_lldp_link_details(
+    details: DeviceDetails, observations: Mapping[str, list[dict[str, Any]]]
+) -> None:
+    """Attach previously observed LLDP neighbors to exact MAC endpoints only."""
+    for source_mac, links in observations.items():
+        for link in links:
+            if not isinstance(link, dict):
+                continue
+            source = normalize_mac(source_mac)
+            target = normalize_mac(link.get("target_mac"))
+            if details.mac != source and details.mac != target:
+                continue
+            peer = target if details.mac == source else source
+            details.add(
+                "lldp_observed_link",
+                {
+                    "peer_mac": peer,
+                    "local_port": (
+                        link.get("source_port_id") if details.mac == source
+                        else link.get("target_port_id")
+                    ),
+                    "match_status": link.get("match_status"),
+                },
+                source="lldp",
+                observed_at=link.get("observed_at"),
+            )
