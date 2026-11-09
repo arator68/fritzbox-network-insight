@@ -71,10 +71,10 @@
         "name": "Mesh-Funkkanalbreite"
       },
       "wlan_rx_rate": {
-        "name": "WLAN-Empfangsdatenrate (Mesh)"
+        "name": "WLAN-Mesh-Datenrate RX (AVM-Rohfeld)"
       },
       "wlan_tx_rate": {
-        "name": "WLAN-Sendedatenrate (Mesh)"
+        "name": "WLAN-Mesh-Datenrate TX (AVM-Rohfeld)"
       },
       "wlan_signal_strength": {
         "name": "WLAN-Signalstärke (TR-064)"
