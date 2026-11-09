@@ -44,6 +44,32 @@ class WlanDeviceAttributeTests(unittest.TestCase):
         self.assertNotIn("wifi_signal_rx_dbm", by_field)
         self.assertEqual(by_field["mesh_reported_wlan_peer_mac"]["value"], "E0:28:6D:C0:51:38")
 
+    def test_explicit_mesh_radio_metadata_keeps_source_and_scope(self):
+        details = model.build_device_details("00:4B:12:69:4D:2C", {})
+        details.add("mesh_wlan_link_radio_fields", {
+            "wifi_standard": "n", "stream_count": 1,
+            "max_data_rate_rx": 150000, "password": "never expose",
+        }, source="avm_mesh_radio", observed_at="mesh-time")
+        details.add("mesh_wlan_channel_radio_fields", {
+            "channel_width": "20 MHz", "frequency_band": "2.4 GHz",
+        }, source="avm_mesh_radio", observed_at="mesh-time")
+        rows = formatter.wlan_details_attribute(details, "802.11")
+        by_field = {row["field"]: row for row in rows}
+        for field in ("wifi_standard", "stream_count", "channel_width", "frequency_band"):
+            self.assertEqual(by_field[field]["source"], "avm_mesh_radio")
+            self.assertEqual(by_field[field]["observed_at"], "mesh-time")
+        self.assertEqual(by_field["stream_count"]["value"], 1)
+        self.assertEqual(by_field["channel_width"]["value"], "20 MHz")
+        self.assertEqual(by_field["channel_width"]["raw_scope"], "channel")
+        self.assertNotIn("password", str(rows))
+        self.assertNotIn("max_data_rate_rx", by_field)
+
+    def test_missing_radio_metadata_is_not_guessed_from_channel(self):
+        details = model.build_device_details("00:4B:12:69:4D:2C", {})
+        details.add("mesh_wifi_channel", 1, source="avm_mesh_radio")
+        rows = formatter.wlan_details_attribute(details, "802.11")
+        self.assertEqual([row["field"] for row in rows], ["mesh_wifi_channel"])
+
     def test_lan_and_unknown_do_not_expose_wlan(self):
         details = model.build_device_details("00:4B:12:69:4D:2C", {})
         details.add("wifi_rate_tx_mbps", 71, source="avm_mesh_radio")
