@@ -62,6 +62,36 @@ class TestDeviceDetails(unittest.TestCase):
         self.assertFalse(details.available("dns_name"))
         self.assertFalse(details.available("wifi_signal"))
 
+    def test_snmp_only_actual_nonsecret_observations(self):
+        details = model.build_device_details("D4:D6:DF:0E:1B:54", {})
+        model.add_snmp_details(details, {
+            "protocols": ["snmp"], "sys_name": "SG3428",
+            "fdb_entry_count": "22", "auth_password": "SECRET",
+            "last_run": "2026-11-09T08:00:00+00:00",
+        })
+        self.assertEqual(details.values("snmp_system_name")[0].source, "snmp_v3")
+        self.assertEqual(details.values("fdb_entry_count")[0].value, "22")
+        self.assertFalse(details.available("auth_password"))
+        self.assertFalse(details.available("snmp_system_description"))
+
+    def test_lldp_and_mesh_do_not_claim_physical_cable(self):
+        details = model.build_device_details("D4:D6:DF:0E:1B:54", {})
+        model.add_mesh_link_details(details, [{
+            "source_mac": "D4:D6:DF:0E:1B:54",
+            "target_mac": "04:B4:FE:18:79:65", "link_type": "lan",
+        }])
+        model.add_lldp_link_details(details, {
+            "D4:D6:DF:0E:1B:54": [{
+                "target_mac": "04:B4:FE:18:79:65",
+                "source_port_id": "gigabitEthernet 1/0/1",
+                "target_port_id": "LAN 1", "match_status": "matched",
+                "observed_at": "2026-11-09T08:00:00+00:00",
+            }]
+        })
+        self.assertEqual(details.values("mesh_reported_link")[0].source, "avm_mesh")
+        self.assertEqual(details.values("lldp_observed_link")[0].source, "lldp")
+        self.assertFalse(details.available("physical_cable"))
+
     def test_invalid_identity_and_missing_source_rejected(self):
         with self.assertRaises(ValueError):
             model.build_device_details("invalid", {"tr064": {"name": "x"}})
