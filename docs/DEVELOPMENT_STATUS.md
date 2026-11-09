@@ -210,3 +210,11 @@ Server-3
 - **Ergebnis:** Für dieses reale Gerät liegen keine expliziten `wifi_standard`-, `stream_count`-, `channel_width`- oder `frequency_band`-Felder in der aktuellen Diagnose vor. Die neue Attribut-Whitelist wird hier folgerichtig nichts zusätzlich ausgeben; keine heuristischen Ableitungen einführen.
 - SNMP-FDB: Port `gigabitEthernet 1/0/8` des SG3428 als `reachable_via_port`, `endpoint_access: wlan`, `direct_connection: unknown`; keine Behauptung einer direkten Kabelverbindung.
 - Die Daten stammen aus der bereits installierten Integration (noch ohne neuen Feature-Branch). **Keine erneute Installation/Neustart für die Datenerhebung nötig.** Für einen Nutzen der Erweiterung weitere reale WLAN-Geräte untersuchen oder auf zusätzliche tatsächlich vorhandene Quellen fokussieren.
+
+## 18. 2026-11-09 – Gesamtdiagnose mit 72 Geräten analysiert
+
+- Nutzer lieferte vollständige Ausgabe von `device_details_diagnostics`: **72 Geräte**, davon **55 mit `interface_type: 802.11`**.
+- `mesh_wlan_channel_radio_fields.channel_width` ist bei vielen WLAN-Geräten vorhanden; Beispiele: HeizungCam 20 MHz, T65Plus 160 MHz, FireHD 160 MHz. TR-064 meldet für T65Plus und FireHD gleichzeitig `wifi_channel_width: 80`; Steckdosenleiste-Kueche Mesh 40 MHz, TR-064 20. **Unterschiedliche Quellen und möglicherweise unterschiedliche Bedeutung; nicht blind zusammenführen.**
+- In den 55 WLAN-Geräte-Diagnosen wurden keine expliziten `wifi_standard`- oder `stream_count`-Rohfelder in den `mesh_wlan_*_radio_fields` gefunden; `wifi_frequency_band_mhz` war ebenfalls nicht vorhanden.
+- Die neu implementierte Ausgabe von `channel_width` aus Mesh-Rohmetadaten ist damit anhand realer Daten relevant, benötigt jedoch eine **klare Kennzeichnung als Mesh-Kanalbreite** (nicht ungeprüft als Client-Link-Bandbreite).
+- Nächster Schritt: Bedeutung/Zuordnung von Mesh-Interface-Kanalbreite vs. TR-064-Client-Kanalbreite im Code überprüfen, Attribute quellen- und scope-sicher benennen und Regressionstests ergänzen. Kein HA-Neustart erforderlich.
