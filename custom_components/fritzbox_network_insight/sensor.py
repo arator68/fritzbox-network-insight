@@ -45,6 +45,31 @@ async def async_setup_entry(
         ):
             registry.async_remove(registered.entity_id)
 
+    # Older versions registered WLAN entities even when the metric had no
+    # observation. Those orphaned registry entries retain their old labels.
+    # Prune only unavailable WLAN metrics for this config entry at startup;
+    # a later scan recreates the same stable unique ID if data becomes valid.
+    for registered in list(er.async_entries_for_config_entry(registry, entry.entry_id)):
+        if registered.domain != "sensor" or registered.platform != DOMAIN:
+            continue
+        unique_id = registered.unique_id
+        for metric in VISIBLE_WLAN_METRICS:
+            suffix = f"_wlan_{metric}"
+            if not unique_id.startswith("host_") or not unique_id.endswith(suffix):
+                continue
+            compact_mac = unique_id[len("host_"):-len(suffix)]
+            if len(compact_mac) != 12:
+                continue
+            mac = ":".join(compact_mac[i:i+2] for i in range(0, 12, 2)).upper()
+            host = (coordinator.data or {}).get(mac)
+            details = coordinator.device_details.get(mac)
+            if not _is_wlan(host) or not host or not host.get("active") or details is None:
+                break
+            rows = wlan_details_attribute(details, host.get("interface_type"))
+            if metric_observation(rows, metric) is None:
+                registry.async_remove(registered.entity_id)
+            break
+
     def _wlan_entities(mac: str) -> list[SensorEntity]:
         host = (coordinator.data or {}).get(mac)
         if not _is_wlan(host) or host.get("active") is not True:
