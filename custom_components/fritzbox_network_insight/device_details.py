@@ -197,3 +197,25 @@ def add_lldp_link_details(
                 source="lldp",
                 observed_at=link.get("observed_at"),
             )
+
+
+def add_wlan_details(
+    details: DeviceDetails, observations: Mapping[str, Mapping[str, Any]] | None
+) -> None:
+    """Attach only MAC-matched, actually reported WLAN measurements.
+
+    Each WLANConfiguration instance is kept distinct: its number does not
+    establish a radio band, and SignalStrength is not assumed to be dBm.
+    """
+    if not isinstance(observations, Mapping):
+        return
+    allowed = {
+        "wifi_speed_mbps", "wifi_signal_strength", "wifi_channel",
+        "wifi_channel_width", "wifi_guest",
+    }
+    for instance, fields in observations.items():
+        if not isinstance(fields, Mapping) or not instance.startswith("wlan_configuration_"):
+            continue
+        for key in allowed:
+            if key in fields:
+                details.add(key, fields[key], source=f"tr064_{instance}")
