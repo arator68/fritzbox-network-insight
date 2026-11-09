@@ -32,6 +32,8 @@ def extract_mesh_wlan_details(
         interfaces = node.get("node_interfaces", [])
         if not isinstance(interfaces, list):
             continue
+        if str(node.get("mesh_role", "")).lower() not in {"master", "slave"}:
+            continue
         for interface in interfaces:
             if not isinstance(interface, dict) or str(interface.get("type", "")).upper() != "WLAN":
                 continue
