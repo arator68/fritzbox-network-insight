@@ -45,6 +45,34 @@ class TestMeshWlanDetails(unittest.TestCase):
         self.assertEqual(radio["mesh_wifi_channel"], 11)
         self.assertNotIn("wifi_signal_dbm", radio)
 
+    def test_radio_schema_fields_only_allow_safe_scalars(self):
+        payload = {"nodes": [
+            {"uid": "ap", "mesh_role": "master", "node_interfaces": [{
+                "type": "WLAN", "current_channel_info": {
+                    "channel_width": "20 MHz", "secret": "not shown"
+                },
+                "node_links": [{
+                    "uid": "link", "state": "CONNECTED",
+                    "node_1_uid": "ap", "node_2_uid": "client",
+                    "max_data_rate_rx": 143000,
+                    "wifi_standard": "ax", "password": "hidden",
+                    "stream_count": 1, "mimo_detail": {"secret": "hidden"}
+                }]
+            }]},
+            {"uid": "client", "device_mac_address": "20:6E:F1:02:62:D8"},
+        ]}
+        data = extract(payload, {"20:6E:F1:02:62:D8": "20:6E:F1:02:62:D8"})
+        radio = data["20:6E:F1:02:62:D8"][0]
+        self.assertEqual(radio["mesh_wlan_link_radio_fields"], {
+            "max_data_rate_rx": 143000, "wifi_standard": "ax",
+            "stream_count": 1,
+        })
+        self.assertEqual(radio["mesh_wlan_channel_radio_fields"], {
+            "channel_width": "20 MHz",
+        })
+        self.assertNotIn("password", str(radio))
+        self.assertNotIn("secret", str(radio))
+
     def test_unmatched_client_and_disconnected_links_ignored(self):
         payload = {"nodes": [
             {"uid": "ap", "mesh_role": "master", "node_interfaces": [{
