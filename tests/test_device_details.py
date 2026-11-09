@@ -50,6 +50,31 @@ class TestDeviceDetails(unittest.TestCase):
             "Invalid MAC address",
         )
 
+    def test_repeated_wlan_instances_are_deduplicated(self):
+        details = model.build_device_details("20:6E:F1:02:62:D8", {})
+        repeated = {"wifi_channel": 11, "wifi_channel_width": 20,
+                    "wifi_signal_strength": 70, "wifi_speed_mbps": 86,
+                    "wifi_guest": False}
+        model.add_wlan_details(details, {
+            "wlan_configuration_1": repeated,
+            "wlan_configuration_2": repeated,
+            "wlan_configuration_3": repeated,
+        })
+        for key, expected in repeated.items():
+            self.assertEqual(len(details.values(key)), 1)
+            self.assertEqual(details.values(key)[0].value, expected)
+        self.assertFalse(details.available("wifi_signal_dbm"))
+        self.assertFalse(details.available("wifi_band"))
+
+    def test_host_wlan_speed_is_not_lan_speed(self):
+        details = model.details_from_host({
+            "mac": "20:6E:F1:02:62:D8",
+            "interface_type": "802.11",
+            "raw": {"X_AVM-DE_Speed": 81},
+        })
+        self.assertEqual(details.values("tr064_host_speed_mbps")[0].value, 81)
+        self.assertFalse(details.available("lan_speed_mbps"))
+
     def test_identity_and_source_provenance(self):
         details = model.build_device_details(
             "d4:d6:df:0e:1b:54",
@@ -82,7 +107,7 @@ class TestDeviceDetails(unittest.TestCase):
         self.assertEqual(details.values("online")[0].value, False)
         self.assertEqual(details.values("online")[0].source, "tr064")
         self.assertEqual(details.values("mesh_role")[0].source, "avm_mesh")
-        self.assertEqual(details.values("lan_speed_mbps")[0].value, "1000")
+        self.assertEqual(details.values("tr064_host_speed_mbps")[0].value, "1000")
         self.assertFalse(details.available("dns_name"))
         self.assertFalse(details.available("wifi_signal"))
 
