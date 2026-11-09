@@ -136,6 +136,30 @@ class TestDeviceDetails(unittest.TestCase):
         self.assertFalse(details.available("dns_name"))
         self.assertFalse(details.available("wifi_signal"))
 
+    def test_snmp_port_telemetry_in_diagnostics(self):
+        details = model.build_device_details("D4:D6:DF:0E:1B:54", {})
+        model.add_snmp_details(details, {
+            "protocols": ["snmp"],
+            "port_telemetry_status": "ok",
+            "port_telemetry": '[{"if_index":1,"interface_name":"gigabitEthernet 1/0/1","reported_speed_mbps":1000,"speed_source":"ifHighSpeed","oper_status":"up"}]',
+            "last_run": "2026-11-09T08:00:00+00:00",
+        })
+        result = diagnostics.device_details_snapshot({details.mac: details}, details.mac)
+        ports = result["devices"][details.mac]["snmp_port_telemetry"]
+        self.assertEqual(ports[0]["value"]["reported_speed_mbps"], 1000)
+        self.assertEqual(ports[0]["source"], "snmp_v3_if_mib")
+        self.assertEqual(ports[0]["observed_at"], "2026-11-09T08:00:00+00:00")
+        self.assertNotIn("duplex", ports[0]["value"])
+        self.assertNotIn("connected_device", ports[0]["value"])
+
+    def test_unavailable_snmp_ports_are_not_invented(self):
+        details = model.build_device_details("D4:D6:DF:0E:1B:54", {})
+        model.add_snmp_details(details, {
+            "protocols": ["snmp"], "port_telemetry_status": "unavailable",
+        })
+        self.assertFalse(details.available("snmp_port_telemetry"))
+        self.assertEqual(details.values("snmp_port_telemetry_status")[0].value, "unavailable")
+
     def test_snmp_only_actual_nonsecret_observations(self):
         details = model.build_device_details("D4:D6:DF:0E:1B:54", {})
         model.add_snmp_details(details, {
