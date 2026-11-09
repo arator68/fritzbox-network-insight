@@ -161,3 +161,12 @@ Server-3
 - `-31` stimmt numerisch mit dem in AVM angezeigten `−31 dBm` überein; die allgemeine Einheit/Interpretation des Rohfelds ist im Code noch nicht verifiziert. Keine globale dBm-Umbenennung allein aufgrund eines Beispiels.
 - Frequenzband, Standard, Kanalbandbreite, Streams, WDS und STBC erscheinen im bisher gezeigten `wlan_details`-Attribut nicht. Vor Ergänzung prüfen, ob die TR-064-/Mesh-Rohdaten diese Angaben zuverlässig liefern.
 - **Nächster technischer Prüfschritt:** Quelle und Bedeutung der WLAN-Raten und Signal-/Bandbreitenfelder im bestehenden AVM-Parser nachvollziehen, gezielte Tests erstellen; produktive HA-Installation erst nach gebündelten Änderungen erneut aktualisieren.
+
+## 12. 2026-11-09 – Quellcodeprüfung der WLAN-Raten und Funkmetadaten
+
+- `mesh_wlan_details.py` liest `cur_data_rate_rx` und `cur_data_rate_tx` aus dem Mesh-Link und rechnet jeweils durch 1000 in `wifi_rate_rx_mbps` und `wifi_rate_tx_mbps` um. **Im Parser findet keine RX-/TX-Vertauschung statt.** Ob diese Rohfeld-Richtung mit den Pfeilen in der FRITZ!Box-Weboberfläche übereinstimmt, ist damit noch nicht bewiesen.
+- Die AVM-Oberfläche zeigte 72/14 Mbit/s, die zeitlich getrennte Mesh-Beobachtung 0/71 Mbit/s. Eine Ursache ist **nicht belegt**; keine Korrektur der Live-Werte auf Verdacht.
+- `mesh_wlan_details.py` sammelt bereits selektive rohe Funkmetadaten aus Link/Interface/Kanal (z. B. `wifi_standard`, `stream_count`, `channel_width`) unter `mesh_wlan_*_radio_fields`, **falls** die AVM-Mesh-Payload sie enthält. Diese Dictionaries werden bislang nicht als einzelne `wlan_details`-Felder veröffentlicht; beim Luftreiniger sind solche Werte in den vorgelegten HA-Attributen nicht nachgewiesen.
+- `wlan_details.py` liest die TR-064 WLAN-Geräteliste aus den WLANConfiguration-Instanzen und unterstützt explizite Band-/Kanalbreitenfelder, aber nicht die zusätzlichen AVM-Weboberflächenwerte wie WDS/STBC. Instanznummern dürfen nicht als Funkband interpretiert werden.
+- Neuer gezielter Regressionstest in `tests/test_mesh_wlan_details.py`: prüft getrennte RX-/TX-Werte, 0 als gültige Rate, 150/150-Maximum, rohe Signalwerte und das selektive Extrahieren vorhandener Funkmetadaten ohne erfundene dBm-Werte. Commit `4636a25`; **CI-Ausführung dieses neuen Commits noch nicht bestätigt**.
+- Weiteres Vorgehen: CI abwarten; vor einer Erweiterung der sichtbaren Attribute prüfen, ob ein reales Mesh-Payload des Geräts diese Funkmetadaten tatsächlich enthält. Keine zusätzliche HA-Installation allein für die Quellcodeprüfung.
