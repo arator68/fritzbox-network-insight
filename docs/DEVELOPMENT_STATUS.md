@@ -143,3 +143,12 @@ Server-3
 4. Erst danach über PR/Merge nach `develop` entscheiden.
 
 **Hinweis:** Abschnitte 1–8 dokumentieren frühere Zwischenstände und sind nicht als aktuelle PR-/CI-Aussagen zu lesen. Insbesondere die damaligen Aussagen zu PR #32 sind historische Momentaufnahmen.
+
+## 10. 2026-11-09 – WLAN-Gerätedetails in Home Assistant praktisch bestätigt
+
+- Nutzer hat Home Assistant nach Installation der aktuellen WLAN-Änderungen neu gestartet und die Statusattribute des WLAN-Luftreinigers im Arbeitszimmer übermittelt: `sensor.fritzbox_network_insight_004b12694d2c_status`, MAC `00:4B:12:69:4D:2C`, `interface_type: 802.11`.
+- **Praxistest erfolgreich:** `wlan_details` ist vorhanden; RX 0 Mbit/s, TX 71 Mbit/s, RX/TX-Maximum je 150 Mbit/s, Mesh-Kanal 1. Die Messwerte sind mit `source: avm_mesh_radio` und `observed_at: 2026-11-09T11:39:05.474961+00:00` versehen.
+- Rohe Signal-/RCPI-Felder bleiben unverändert: `wifi_mesh_signal_rx_raw: -31`, `mesh_rx_rcpi_raw: -31`, `mesh_tx_rcpi_raw: 255`. Diese Werte **nicht** ungeprüft als dBm oder Prozent interpretieren.
+- `mesh_reported_wlan_peer_mac: E0:28:6D:C0:51:38` wird mit `source: avm_mesh` ausgegeben; dessen `observed_at` ist aktuell `null`. **Offener Qualitätsaspekt:** Zeitstempel dieser Peer-Beobachtung prüfen und nur bei belegter Quelle ergänzen.
+- In der übermittelten Attributliste ist kein `lan_switch_ports` vorhanden; die LAN-/WLAN-Abgrenzung ist für dieses Gerät korrekt.
+- **Keine weitere HA-Neustartschleife nötig** für diese Prüfung. Nächste Schritte: Qualitätsaspekt mit dem Peer-Zeitstempel bei Bedarf im Code prüfen, Änderung bündeln und den Feature-Branch für einen PR nach `develop` vorbereiten. Merge noch nicht bestätigt.
