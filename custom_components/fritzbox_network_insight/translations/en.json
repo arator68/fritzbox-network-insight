@@ -57,15 +57,23 @@
           "no_adapters_configured": "No discovery adapters configured"
         }
       },
-      "wlan_mesh_peer_channel_width": {"name": "Mesh peer WLAN interface channel width"},
-      "wlan_mesh_channel": {"name": "Mesh WLAN radio channel"},
-      "wlan_mesh_signal_rx_raw": {"name": "Mesh received signal (raw)"},
-      "wlan_mesh_signal_tx_raw": {"name": "Mesh transmitted signal (raw)"},
+      "wlan_mesh_peer_channel_width": {
+        "name": "Mesh peer WLAN interface channel width"
+      },
+      "wlan_mesh_channel": {
+        "name": "Mesh WLAN radio channel"
+      },
+      "wlan_mesh_signal_rx_raw": {
+        "name": "Mesh received signal (raw)"
+      },
+      "wlan_mesh_signal_tx_raw": {
+        "name": "Mesh transmitted signal (raw)"
+      },
       "wlan_channel": {
-        "name": "WLAN channel"
+        "name": "WLAN channel (source in attributes)"
       },
       "wlan_channel_width": {
-        "name": "WLAN device channel width (TR-064)"
+        "name": "WLAN device channel width (source in attributes)"
       },
       "wlan_mesh_channel_width": {
         "name": "Mesh radio channel width"
@@ -77,7 +85,7 @@
         "name": "WLAN Mesh rate TX (AVM raw field)"
       },
       "wlan_signal_strength": {
-        "name": "WLAN signal strength (TR-064)"
+        "name": "WLAN signal (TR-064 / Mesh raw value)"
       }
     }
   }
