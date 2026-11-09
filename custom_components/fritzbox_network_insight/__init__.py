@@ -13,6 +13,7 @@ from .const import DOMAIN
 from .coordinator import FritzBoxDataUpdateCoordinator
 from .fritzbox_client import FritzBoxClient
 from .mac_vendor import preload_mac_vendor_registry
+from .topology.view_model import build_topology_view
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -119,6 +120,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             DOMAIN, "topology_diagnostics", async_topology_diagnostics,
             supports_response=SupportsResponse.ONLY,
         )
+    if not hass.services.has_service(DOMAIN, "topology_view"):
+        async def async_topology_view(call):
+            """Return map-ready nodes and evidence-labeled relations."""
+            domain_data = hass.data.get(DOMAIN, {})
+            requested = call.data.get("entry_id")
+            if requested:
+                selected = domain_data.get(requested)
+            elif len(domain_data) == 1:
+                selected = next(iter(domain_data.values()))
+            else:
+                selected = None
+            if selected is None:
+                return {"error": "Specify a valid entry_id (required with multiple entries)"}
+            return build_topology_view(selected.get_internal_topology_graph())
+
+        hass.services.async_register(
+            DOMAIN, "topology_view", async_topology_view,
+            schema=vol.Schema({vol.Optional("entry_id"): str}),
+            supports_response=SupportsResponse.ONLY,
+        )
     # Register once for all config entries. Entry selection is explicit for
     # multi-router installations; without an ID only one entry is accepted.
     def selected_coordinator(call):
@@ -194,6 +215,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if not domain_data:
                 hass.data.pop(DOMAIN, None)
                 hass.services.async_remove(DOMAIN, "topology_diagnostics")
+                hass.services.async_remove(DOMAIN, "topology_view")
                 hass.services.async_remove(DOMAIN, "confirm_topology_link")
                 hass.services.async_remove(DOMAIN, "remove_topology_link")
     return unload_ok
