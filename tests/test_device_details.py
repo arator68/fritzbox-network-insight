@@ -23,9 +23,33 @@ def _load(name):
 
 _load("device")
 model = _load("device_details")
+diagnostics = _load("device_diagnostics")
 
 
 class TestDeviceDetails(unittest.TestCase):
+    def test_diagnostics_selects_mac_and_retains_provenance(self):
+        one = model.build_device_details(
+            "D4:D6:DF:0E:1B:54",
+            {"snmp": {"snmp_system_name": "SG3428"}},
+            observed_at="2026-11-09T08:00:00+00:00",
+        )
+        two = model.build_device_details("04:B4:FE:18:79:65", {"tr064": {"online": True}})
+        result = diagnostics.device_details_snapshot(
+            {one.mac: one, two.mac: two}, "d4:d6:df:0e:1b:54"
+        )
+        self.assertEqual(result["device_count"], 1)
+        self.assertEqual(
+            result["devices"][one.mac]["snmp_system_name"][0]["source"], "snmp"
+        )
+        self.assertEqual(
+            result["devices"][one.mac]["snmp_system_name"][0]["observed_at"],
+            "2026-11-09T08:00:00+00:00",
+        )
+        self.assertEqual(
+            diagnostics.device_details_snapshot({one.mac: one}, "bad")["error"],
+            "Invalid MAC address",
+        )
+
     def test_identity_and_source_provenance(self):
         details = model.build_device_details(
             "d4:d6:df:0e:1b:54",
