@@ -67,7 +67,7 @@ def fetch_wlan_devices(host: str, username: str, password: str, timeout: int = 1
     """Blocking optional AVM WLAN list fetch; invoke only in HA executor."""
     connection = FritzConnection(address=host, user=username, password=password, timeout=timeout)
     records: dict[str, dict] = {}
-    for instance in (1, 2, 3):
+    for instance in (1, 2, 3, 4):
         try:
             response = connection.call_action(
                 f"WLANConfiguration{instance}", "X_AVM-DE_GetWLANDeviceListPath"
