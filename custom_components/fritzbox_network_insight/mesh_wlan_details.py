@@ -7,6 +7,24 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+
+# Strictly limited to non-identifying WLAN capability/measurement field names.
+_RADIO_TOKENS = ("standard", "stream", "mimo", "max_data_rate",
+                 "max_rate", "phy_mode", "wifi_mode", "wlan_mode",
+                 "channel_width", "frequency_band", "bandwidth")
+
+
+def _radio_fields(record: Mapping[str, Any]) -> dict[str, str | int | float | bool]:
+    """Expose bounded raw radio metadata, without identifiers or nested payloads."""
+    return {
+        key: value for key, value in record.items()
+        if isinstance(key, str) and len(key) <= 64
+        and any(token in key.lower() for token in _RADIO_TOKENS)
+        and isinstance(value, (str, int, float, bool))
+        and (not isinstance(value, str) or len(value) <= 64)
+    }
+
+
 from .device import normalize_mac
 
 
@@ -82,6 +100,16 @@ def extract_mesh_wlan_details(
                 info = interface.get("current_channel_info")
                 if isinstance(info, dict) and info.get("channel_width") is not None:
                     values["mesh_wifi_channel_width_raw"] = info["channel_width"]
+                # Preserve the exact source field names for a focused schema
+                # check. No guessed Wi-Fi standard, stream count or max rate.
+                for scope, record in (
+                    ("link", link),
+                    ("interface", interface),
+                    ("channel", info if isinstance(info, dict) else {}),
+                ):
+                    raw_fields = _radio_fields(record)
+                    if raw_fields:
+                        values[f"mesh_wlan_{scope}_radio_fields"] = raw_fields
                 if len(values) > 1:
                     result.setdefault(canonical, []).append(values)
     return result
