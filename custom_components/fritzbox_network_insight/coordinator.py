@@ -20,6 +20,7 @@ from .discovery import DiscoveryManager
 from .discovery.snmp import SnmpDiscoveryAdapter
 from .mac_vendor import lookup_mac_vendor
 from .mesh import fetch_mesh, parse_mesh
+from .device_details import DeviceDetails, details_from_host
 from .snmp_device_classifier import classify_snmp_system
 from .identification_store import IdentificationStore
 from .topology.lldp_matcher import match_lldp_neighbors
@@ -53,6 +54,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self.client = client
         self.discovery_results: dict[str | None, dict[str, Any]] = {}
         self.device_identifications: dict[str, dict[str, str]] = {}
+        self.device_details: dict[str, DeviceDetails] = {}
         self.identification_store = IdentificationStore(hass, entry.entry_id)
         self.topology_store = TopologyStore(hass, entry.entry_id)
         self.fdb_topology_store = FdbTopologyStore(hass, entry.entry_id)
@@ -457,6 +459,11 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             if identification and host.get("device_type_source") == "snmp_sys_object_id":
                 host["device_type_confidence"] = identification["device_type_confidence"]
             host.update(lookup_mac_vendor(host.get('mac')))
+        # Publish only successfully assembled detail snapshots after enrichment.
+        # These are internal observations; entity creation is intentionally separate.
+        self.device_details = {
+            mac: details_from_host(host) for mac, host in indexed.items()
+        }
         _LOGGER.info("FRITZ!Box host scan completed: %d device(s) found", len(indexed))
         for host in indexed.values():
             _LOGGER.debug(
