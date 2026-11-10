@@ -12,7 +12,7 @@ from homeassistant.helpers import selector
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
-from .device import normalize_mac
+from .wlan_details import fetch_wlan_devices
 from .fritzbox_client import (
     FritzBoxAuthenticationError,
     FritzBoxClient,
@@ -97,6 +97,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class SnmpOptionsFlow(config_entries.OptionsFlow):
     """Separate management screens for repeater and SNMP settings."""
 
+    def _label(self, de, en):
+        return de if self.hass.config.language.lower().startswith("de") else en
+
+    def _repeater_name(self, address):
+        coordinator = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+        if coordinator is not None:
+            for device in (coordinator.data or {}).values():
+                if address in (device.get("ip"), device.get("ip_address"), device.get("ipv4_address")):
+                    return device.get("name") or device.get("hostname") or address
+        return address
+
     async def async_step_init(self, user_input=None):
         if user_input is not None:
             return await getattr(self, "async_step_" + user_input["section"])()
@@ -104,9 +115,9 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
             step_id="init",
             data_schema=vol.Schema({
                 vol.Required("section"): vol.In({
-                    "repeaters": "Manage repeaters",
-                    "snmp": "Manage SNMP devices",
-                    "fritzbox": "FRITZ!Box connection information",
+                    "repeaters": self._label("Repeater verwalten", "Manage repeaters"),
+                    "snmp": self._label("SNMP-Geräte verwalten", "Manage SNMP devices"),
+                    "fritzbox": self._label("FRITZ!Box-Verbindung", "FRITZ!Box connection"),
                 }),
             }),
         )
@@ -144,6 +155,8 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
                 return await self.async_step_init()
             if action.startswith("edit:"):
                 return await self.async_step_repeater_edit(host=action[5:])
+            if action.startswith("test:"):
+                return await self.async_step_repeater_test(host=action[5:])
             if action.startswith("toggle:"):
                 host = action[7:]
                 configs[host] = {**configs[host], "enabled": not configs[host].get("enabled", True)}
@@ -156,12 +169,17 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
                     "repeater_wlan_diagnostics": {},
                 },
             )
-        actions = {"__add__": "Add repeater", "__back__": "Back"}
+        actions = {"__add__": self._label("Repeater hinzufügen", "Add repeater"),
+                   "__back__": self._label("Zurück", "Back")}
         for host, config in sorted(configs.items()):
-            state = "enabled" if config.get("enabled", True) else "disabled"
-            actions[f"edit:{host}"] = f"Edit {host} ({state})"
-            actions[f"toggle:{host}"] = f"{'Disable' if config.get('enabled', True) else 'Enable'} {host}"
-            actions[f"remove:{host}"] = f"Remove {host}"
+            enabled = config.get("enabled", True)
+            state = self._label("aktiviert", "enabled") if enabled else self._label("deaktiviert", "disabled")
+            name = self._repeater_name(host)
+            display = f"{name} ({host})" if name != host else host
+            actions[f"edit:{host}"] = f"{self._label('Bearbeiten', 'Edit')}: {display} ({state})"
+            actions[f"test:{host}"] = f"{self._label('Verbindung testen', 'Test connection')}: {display}"
+            actions[f"toggle:{host}"] = f"{self._label('Deaktivieren', 'Disable') if enabled else self._label('Aktivieren', 'Enable')}: {display}"
+            actions[f"remove:{host}"] = f"{self._label('Entfernen', 'Remove')}: {display}"
         return self.async_show_form(
             step_id="repeaters",
             data_schema=vol.Schema({vol.Required("action"): vol.In(actions)}),
