@@ -106,6 +106,8 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
         } if hosts is not None else {}
         if not choices:
             return self.async_abort(reason="no_devices")
+        if user_input is not None and user_input.get("mac") == "__repeater_diagnostics__":
+            return await self.async_step_repeater_diagnostics()
         if user_input is not None:
             mac = user_input["mac"]
             devices = dict(self.config_entry.options.get("snmp_devices", {}))
@@ -120,7 +122,7 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
-                vol.Required("mac"): vol.In(choices),
+                vol.Required("mac"): vol.In({**choices, "__repeater_diagnostics__": "Configure repeater WLAN diagnostics"}),
                 vol.Required("snmp_username"): str,
                 vol.Required("auth_password"): selector.TextSelector(
                     selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
@@ -130,3 +132,34 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
                 ),
             }),
         )
+
+    async def async_step_repeater_diagnostics(
+        self, user_input: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Opt in to read-only WLAN diagnostics from one repeater."""
+        if user_input is not None:
+            host = user_input["host"].strip()
+            if not host:
+                return self.async_show_form(step_id="repeater_diagnostics", errors={"base": "invalid_host"},
+                                            data_schema=self._repeater_schema())
+            config = {
+                "host": host,
+                "username": user_input["username"].strip(),
+                "password": user_input["password"],
+            }
+            return self.async_create_entry(
+                title="", data={**self.config_entry.options, "repeater_wlan_diagnostics": config}
+            )
+        return self.async_show_form(
+            step_id="repeater_diagnostics", data_schema=self._repeater_schema()
+        )
+
+    @staticmethod
+    def _repeater_schema() -> vol.Schema:
+        return vol.Schema({
+            vol.Required("host", default="192.168.178.63"): str,
+            vol.Required("username"): str,
+            vol.Required("password"): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            ),
+        })
