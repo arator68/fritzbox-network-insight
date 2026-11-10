@@ -54,6 +54,34 @@ class WlanConnectionMetadataTests(unittest.TestCase):
         )
         self.assertEqual(set(observed), {"role"})
 
+    def test_channel_104_derives_five_ghz_with_provenance(self):
+        details = details_module.DeviceDetails(self.MAC)
+        details.add("mesh_peer_interface_channel", 104, source="avm_mesh_radio")
+        observed = module.connection_metadata(
+            self.MAC, {"active": True, "interface_type": "802.11"}, details, {}, {}
+        )
+        self.assertEqual(observed["band"]["value"], "5 GHz")
+        self.assertEqual(observed["band"]["source"], "derived_from_wlan_channel")
+        self.assertEqual(observed["band"]["channel"], 104)
+        self.assertEqual(observed["band"]["source_field"], "mesh_peer_interface_channel")
+
+    def test_explicit_band_takes_precedence_over_channel(self):
+        details = details_module.DeviceDetails(self.MAC)
+        details.add("wifi_frequency_band_mhz", 5000, source="tr064")
+        details.add("mesh_peer_interface_channel", 104, source="avm_mesh_radio")
+        observed = module.connection_metadata(
+            self.MAC, {"active": True, "interface_type": "802.11"}, details, {}, {}
+        )
+        self.assertEqual(observed["band"]["source"], "tr064")
+
+    def test_ambiguous_channel_is_not_guessed(self):
+        details = details_module.DeviceDetails(self.MAC)
+        details.add("mesh_peer_interface_channel", 7, source="avm_mesh_radio")
+        observed = module.connection_metadata(
+            self.MAC, {"active": True, "interface_type": "802.11"}, details, {}, {}
+        )
+        self.assertNotIn("band", observed)
+
     def test_offline_and_non_wlan_have_no_connection_metadata(self):
         details = details_module.DeviceDetails(self.MAC)
         for host in ({"active": False, "interface_type": "802.11"},
