@@ -87,8 +87,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self._repeater_diag_last_attempt: float = 0.0
         self._repeater_clients_last_attempt: float = 0.0
         self._repeater_raw_last_attempt: float = 0.0
-        self.repeater_raw_store = RepeaterRawStore(hass, entry.entry_id)
-        self._repeater_raw_loaded = False
+        self.repeater_raw_store = RepeaterRawStore()
         self._repeater_diag_values: dict[str, int] = {}
         self._repeater_client_values: dict[str, dict[str, dict[str, int]]] = {}
         self._repeater_diag_observed_at: str | None = None
@@ -474,9 +473,6 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         else:
             self._repeater_client_values = {}
         # Keep raw TR-064 responses independently of derived WLAN fields.
-        if not self._repeater_raw_loaded:
-            await self.repeater_raw_store.async_load()
-            self._repeater_raw_loaded = True
         if repeater_configs:
             now_raw = monotonic()
             if not self._repeater_raw_last_attempt or now_raw - self._repeater_raw_last_attempt >= 300:
@@ -491,7 +487,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                             fetch_repeater_raw, config["host"], config["username"],
                             config["password"], self.client.timeout,
                         )
-                        await self.repeater_raw_store.async_add(repeater_host, snapshot)
+                        self.repeater_raw_store.update(repeater_host, snapshot)
                     except Exception:
                         _LOGGER.debug("Repeater raw snapshot unavailable for %s",
                                       repeater_host, exc_info=True)
