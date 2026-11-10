@@ -137,10 +137,18 @@
           "auth_password": "Authentication password",
           "priv_password": "Privacy password"
         }
+      },
+      "repeater_test": {
+        "title": "Test repeater connection",
+        "description": "Connection to {host} successful. Found {count} WLAN clients in the device list.",
+        "data": {
+          "back": "Back"
+        }
       }
     },
     "error": {
-      "required": "Fill all required fields."
+      "required": "Fill all required fields.",
+      "cannot_connect": "Connection failed. Check repeater address and credentials."
     },
     "abort": {
       "no_devices": "No devices available."
