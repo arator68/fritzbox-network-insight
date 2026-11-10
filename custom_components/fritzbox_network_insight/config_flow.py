@@ -185,6 +185,32 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
             data_schema=vol.Schema({vol.Required("action"): vol.In(actions)}),
         )
 
+    async def async_step_repeater_test(self, user_input=None, host=None):
+        """Verify saved credentials by reading the repeater's WLAN client list."""
+        if host is not None:
+            self._testing_repeater_host = host
+        host = getattr(self, "_testing_repeater_host", None)
+        config = self._repeater_configs().get(host, {})
+        schema = vol.Schema({vol.Required("back", default=True): bool})
+        if user_input is not None:
+            return await self.async_step_repeaters()
+        if not all(config.get(k) for k in ("host", "username", "password")):
+            return self.async_show_form(step_id="repeater_test",
+                                        data_schema=schema, errors={"base": "required"})
+        try:
+            clients = await self.hass.async_add_executor_job(
+                fetch_wlan_devices, config["host"], config["username"],
+                config["password"], 10,
+            )
+        except Exception:
+            _LOGGER.warning("Repeater connection test failed for %s", host, exc_info=True)
+            return self.async_show_form(step_id="repeater_test",
+                                        data_schema=schema, errors={"base": "cannot_connect"})
+        return self.async_show_form(
+            step_id="repeater_test", data_schema=schema,
+            description_placeholders={"host": host, "count": str(len(clients))},
+        )
+
     async def async_step_repeater_edit(self, user_input=None, host=None):
         if host is not None:
             self._editing_repeater_host = host
