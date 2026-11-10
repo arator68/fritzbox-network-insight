@@ -137,10 +137,18 @@
           "auth_password": "Authentifizierungspasswort",
           "priv_password": "Verschlüsselungspasswort"
         }
+      },
+      "repeater_test": {
+        "title": "Repeater-Verbindung testen",
+        "description": "Verbindung zu {host} erfolgreich. {count} WLAN-Geräte in der Geräteliste gefunden.",
+        "data": {
+          "back": "Zurück"
+        }
       }
     },
     "error": {
-      "required": "Bitte alle erforderlichen Felder ausfüllen."
+      "required": "Bitte alle erforderlichen Felder ausfüllen.",
+      "cannot_connect": "Verbindung fehlgeschlagen. Repeater-Adresse und Zugangsdaten prüfen."
     },
     "abort": {
       "no_devices": "Keine Geräte verfügbar."
