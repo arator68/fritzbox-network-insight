@@ -23,6 +23,7 @@ from .mesh import fetch_mesh, parse_mesh
 from .mesh_wlan_details import extract_mesh_wlan_details
 from .wlan_details import fetch_wlan_devices
 from .repeater_wlan_diagnostics import fetch_repeater_wlan_diagnostics, fetch_repeater_clients
+from .repeater_raw_store import RepeaterRawStore, fetch_repeater_raw
 from .device_details import (
     DeviceDetails, details_from_host, add_snmp_details,
     add_mesh_link_details, add_lldp_link_details, add_wlan_details,
@@ -84,6 +85,10 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self._wlan_observed_at: str | None = None
         self._wlan_last_attempt: float = 0.0
         self._repeater_diag_last_attempt: float = 0.0
+        self._repeater_clients_last_attempt: float = 0.0
+        self._repeater_raw_last_attempt: float = 0.0
+        self.repeater_raw_store = RepeaterRawStore(hass, entry.entry_id)
+        self._repeater_raw_loaded = False
         self._repeater_diag_values: dict[str, int] = {}
         self._repeater_client_values: dict[str, dict[str, dict[str, int]]] = {}
         self._repeater_diag_observed_at: str | None = None
@@ -447,8 +452,8 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         repeater_configs = dict(self.entry.options.get("repeaters", {}))
         if repeater_configs:
             now_clients = monotonic()
-            if not self._repeater_diag_last_attempt or now_clients - self._repeater_diag_last_attempt >= 300:
-                self._repeater_diag_last_attempt = now_clients
+            if not self._repeater_clients_last_attempt or now_clients - self._repeater_clients_last_attempt >= 300:
+                self._repeater_clients_last_attempt = now_clients
                 observations = {}
                 for repeater_host, config in repeater_configs.items():
                     if not isinstance(config, dict) or not config.get("enabled", True):
@@ -468,6 +473,28 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                 self._repeater_diag_observed_at = datetime.now(timezone.utc).isoformat()
         else:
             self._repeater_client_values = {}
+        # Keep raw TR-064 responses independently of derived WLAN fields.
+        if not self._repeater_raw_loaded:
+            await self.repeater_raw_store.async_load()
+            self._repeater_raw_loaded = True
+        if repeater_configs:
+            now_raw = monotonic()
+            if not self._repeater_raw_last_attempt or now_raw - self._repeater_raw_last_attempt >= 300:
+                self._repeater_raw_last_attempt = now_raw
+                for repeater_host, config in repeater_configs.items():
+                    if not isinstance(config, dict) or not config.get("enabled", True):
+                        continue
+                    if not all(config.get(k) for k in ("host", "username", "password")):
+                        continue
+                    try:
+                        snapshot = await self.hass.async_add_executor_job(
+                            fetch_repeater_raw, config["host"], config["username"],
+                            config["password"], self.client.timeout,
+                        )
+                        await self.repeater_raw_store.async_add(repeater_host, snapshot)
+                    except Exception:
+                        _LOGGER.debug("Repeater raw snapshot unavailable for %s",
+                                      repeater_host, exc_info=True)
         await self._async_refresh_snmp_topology(indexed)
         # Mesh refresh every 15 minutes; keep the last successful result.
         now_mesh = monotonic()
