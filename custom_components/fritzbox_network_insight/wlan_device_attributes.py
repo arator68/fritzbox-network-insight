@@ -18,6 +18,7 @@ _WLAN_KEYS = (
     "wifi_frequency_band_mhz", "wifi_guest",
     "wifi_signal_strength", "wifi_mesh_signal_rx_raw",
     "mesh_rx_rcpi_raw", "mesh_tx_rcpi_raw",
+    "mesh_rate_rx_kbps", "mesh_rate_tx_kbps",
     "peer_node_uid",
     "mesh_rate_link_owner_is_node_1",
     "mesh_rate_client_is_node_1",
