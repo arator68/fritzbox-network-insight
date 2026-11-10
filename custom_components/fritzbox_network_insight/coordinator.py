@@ -446,33 +446,8 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                     _LOGGER.debug("Optional repeater WLAN diagnostics unavailable", exc_info=True)
         else:
             self._repeater_diag_values = {}
-        # All-client repeater observations. Existing single-target options are
-        # migrated in the options UI; until then keep the legacy path above.
+        # One TR-064 collection feeds both raw inspection and derived WLAN fields.
         repeater_configs = dict(self.entry.options.get("repeaters", {}))
-        if repeater_configs:
-            now_clients = monotonic()
-            if not self._repeater_clients_last_attempt or now_clients - self._repeater_clients_last_attempt >= 300:
-                self._repeater_clients_last_attempt = now_clients
-                observations = {}
-                for repeater_host, config in repeater_configs.items():
-                    if not isinstance(config, dict) or not config.get("enabled", True):
-                        continue
-                    if not all(config.get(k) for k in ("host", "username", "password")):
-                        continue
-                    try:
-                        observations[repeater_host] = await self.hass.async_add_executor_job(
-                            fetch_repeater_clients,
-                            config["host"], config["username"], config["password"],
-                            self.client.timeout,
-                        )
-                    except Exception:
-                        _LOGGER.debug("Repeater WLAN clients unavailable for %s",
-                                      repeater_host, exc_info=True)
-                self._repeater_client_values = observations
-                self._repeater_diag_observed_at = datetime.now(timezone.utc).isoformat()
-        else:
-            self._repeater_client_values = {}
-        # Keep raw TR-064 responses independently of derived WLAN fields.
         if repeater_configs:
             now_raw = monotonic()
             if not self._repeater_raw_last_attempt or now_raw - self._repeater_raw_last_attempt >= 300:
@@ -491,6 +466,10 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                     except Exception:
                         _LOGGER.debug("Repeater raw snapshot unavailable for %s",
                                       repeater_host, exc_info=True)
+                self._repeater_client_values = self.repeater_raw_store.client_values()
+                self._repeater_diag_observed_at = datetime.now(timezone.utc).isoformat()
+        else:
+            self._repeater_client_values = {}
         await self._async_refresh_snmp_topology(indexed)
         # Mesh refresh every 15 minutes; keep the last successful result.
         now_mesh = monotonic()
