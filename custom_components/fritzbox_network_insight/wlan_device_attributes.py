@@ -33,6 +33,9 @@ _WLAN_KEYS = (
     "repeater_tr064_wifi_speed_max_mbps",
     "repeater_tr064_wifi_speed_rx_max_mbps",
     "repeater_tr064_associated_speed_mbps",
+    "repeater_tr064_wifi_signal_strength",
+    "repeater_tr064_wifi_channel",
+    "repeater_tr064_wifi_channel_width",
 )
 
 # Mesh radio metadata is recorded as raw source-specific dictionaries. Only
