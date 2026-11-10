@@ -150,6 +150,7 @@ def extract_mesh_wlan_details(
                         interface_uid in link_interface_refs
                     )
                 values["mesh_connected_ap_interface_type"] = "WLAN"
+                info = interface.get("current_channel_info")
                 # Frequency belongs to this exact connected AP radio, not to
                 # the repeater uplink or another WLAN interface.
                 # AVM may report MHz, kHz or Hz; reject unknown units.
