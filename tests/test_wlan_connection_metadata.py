@@ -76,13 +76,14 @@ class WlanConnectionMetadataTests(unittest.TestCase):
         )
         self.assertEqual(observed["band"]["source"], "tr064")
 
-    def test_ambiguous_channel_is_not_guessed(self):
+    def test_channel_one_derives_two_point_four_ghz(self):
         details = details_module.DeviceDetails(self.MAC)
-        details.add("mesh_peer_interface_channel", 7, source="avm_mesh_radio")
+        details.add("mesh_peer_interface_channel", 1, source="avm_mesh_radio")
         observed = module.connection_metadata(
             self.MAC, {"active": True, "interface_type": "802.11"}, details, {}, {}
         )
-        self.assertNotIn("band", observed)
+        self.assertEqual(observed["band"]["value"], "2,4 GHz")
+        self.assertTrue(observed["band"]["inferred"])
 
     def test_offline_and_non_wlan_have_no_connection_metadata(self):
         details = details_module.DeviceDetails(self.MAC)
