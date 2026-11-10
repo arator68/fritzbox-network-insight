@@ -86,6 +86,15 @@
       },
       "wlan_signal_strength": {
         "name": "WLAN signal strength"
+      },
+      "wlan_connection_role": {
+        "name": "Device role"
+      },
+      "wlan_connection_band": {
+        "name": "Frequency band"
+      },
+      "wlan_connection_peer": {
+        "name": "Connected to"
       }
     }
   }
