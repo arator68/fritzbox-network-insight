@@ -28,6 +28,11 @@ _WLAN_KEYS = (
     "mesh_connected_ap_interface_type",
     "mesh_connected_ap_band_mhz",
     "mesh_connected_ap_primary_freq_mhz",
+    "repeater_tr064_wifi_speed_mbps",
+    "repeater_tr064_wifi_speed_rx_mbps",
+    "repeater_tr064_wifi_speed_max_mbps",
+    "repeater_tr064_wifi_speed_rx_max_mbps",
+    "repeater_tr064_associated_speed_mbps",
 )
 
 # Mesh radio metadata is recorded as raw source-specific dictionaries. Only
