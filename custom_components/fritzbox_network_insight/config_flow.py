@@ -199,10 +199,12 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
                 return await self.async_step_repeater_discovery()
             if action == "__add__":
                 self._editing_repeater_host = None
+                self._discovered_repeater_address = None
                 return await self.async_step_repeater_edit()
             if action == "__back__":
                 return await self.async_step_init()
             if action.startswith("edit:"):
+                self._discovered_repeater_address = None
                 return await self.async_step_repeater_edit(host=action[5:])
             if action.startswith("test:"):
                 return await self.async_step_repeater_test(host=action[5:])
@@ -280,7 +282,7 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
             if not password:
                 return self.async_show_form(
                     step_id="repeater_edit",
-                    data_schema=self._repeater_schema(current, host),
+                    data_schema=self._repeater_schema(current, host or getattr(self, "_discovered_repeater_address", None)),
                     errors={"base": "required"},
                 )
             if host and host != address:
@@ -301,7 +303,7 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
             )
         return self.async_show_form(
             step_id="repeater_edit",
-            data_schema=self._repeater_schema(current, host),
+            data_schema=self._repeater_schema(current, host or getattr(self, "_discovered_repeater_address", None)),
         )
 
     @staticmethod
