@@ -175,10 +175,10 @@ async def async_setup_entry(
             if mac not in wlan_macs and _is_wlan((coordinator.data or {}).get(mac)):
                 wlan_macs.add(mac)
                 new_entities.extend(_wlan_entities(mac))
-            new_entities.extend(_wlan_metadata_entities(mac))
                 new_entities.extend(_wlan_metadata_entities(mac))
         for mac in sorted(wlan_macs):
             new_entities.extend(_wlan_entities(mac))
+            new_entities.extend(_wlan_metadata_entities(mac))
         if new_entities:
             async_add_entities(new_entities)
 
