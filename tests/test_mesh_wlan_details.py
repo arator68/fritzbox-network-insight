@@ -157,6 +157,39 @@ class TestMeshWlanDetails(unittest.TestCase):
         self.assertNotIn("secret", channel)
         self.assertNotIn("do not expose", str(result))
 
+    def test_primary_frequency_is_scoped_to_connected_repeater_radio(self):
+        mac = "20:6E:F1:02:62:D8"
+        payload = {"nodes": [
+            {"uid": "repeater", "mesh_role": "slave", "node_interfaces": [
+                {"type": "WLAN", "mac_address": "60:B5:8D:22:C9:0C",
+                 "current_channel": 7,
+                 "current_channel_info": {"primary_freq": 2442, "channel_width": "20 MHz"},
+                 "node_links": [{"uid": "l1", "state": "CONNECTED",
+                                 "node_1_uid": "repeater", "node_2_uid": "client"}]},
+                {"type": "WLAN", "current_channel": 104,
+                 "current_channel_info": {"primary_freq": 5520},
+                 "node_links": []},
+            ]},
+            {"uid": "client", "device_mac_address": mac},
+        ]}
+        result = extract(payload, {mac: mac})[mac][0]
+        self.assertEqual(result["mesh_connected_ap_band_mhz"], 2400)
+        self.assertEqual(result["mesh_connected_ap_primary_freq_mhz"], 2442)
+        self.assertEqual(result["mesh_connected_ap_interface_mac"], "60:B5:8D:22:C9:0C")
+
+    def test_primary_frequency_unknown_units_not_guessed(self):
+        mac = "20:6E:F1:02:62:D8"
+        payload = {"nodes": [
+            {"uid": "ap", "mesh_role": "master", "node_interfaces": [{
+                "type": "WLAN", "current_channel_info": {"primary_freq": 7},
+                "node_links": [{"uid": "l", "state": "CONNECTED",
+                                "node_1_uid": "ap", "node_2_uid": "client"}],
+            }]},
+            {"uid": "client", "device_mac_address": mac},
+        ]}
+        result = extract(payload, {mac: mac})[mac][0]
+        self.assertNotIn("mesh_connected_ap_band_mhz", result)
+
     def test_unmatched_client_and_disconnected_links_ignored(self):
         payload = {"nodes": [
             {"uid": "ap", "mesh_role": "master", "node_interfaces": [{
