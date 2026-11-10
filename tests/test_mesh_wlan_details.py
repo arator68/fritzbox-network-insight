@@ -132,6 +132,31 @@ class TestMeshWlanDetails(unittest.TestCase):
         self.assertEqual(result["mesh_connected_ap_band_mhz"], 2400)
         self.assertEqual(result["mesh_wifi_channel"], 7)
 
+    def test_connected_ap_schema_does_not_expose_unknown_values(self):
+        mac = "20:6E:F1:02:62:D8"
+        payload = {"nodes": [
+            {"uid": "repeater", "mesh_role": "slave", "node_interfaces": [{
+                "type": "WLAN", "current_channel": 7,
+                "private_blob": "do not expose",
+                "current_channel_info": {
+                    "channel_width": "20 MHz",
+                    "mystery_frequency": "sensitive text",
+                    "frequency_mhz": 2442,
+                    "secret": "do not expose",
+                },
+                "node_links": [{"uid": "l1", "state": "CONNECTED",
+                    "node_1_uid": "repeater", "node_2_uid": "client"}],
+            }]},
+            {"uid": "client", "device_mac_address": mac},
+        ]}
+        result = extract(payload, {mac: mac})[mac][0]
+        channel = result["mesh_wlan_connected_ap_channel_schema"]
+        self.assertEqual(channel["frequency_mhz"]["value"], 2442)
+        self.assertEqual(channel["channel_width"]["value"], "20 MHz")
+        self.assertEqual(channel["mystery_frequency"], {"type": "string"})
+        self.assertNotIn("secret", channel)
+        self.assertNotIn("do not expose", str(result))
+
     def test_unmatched_client_and_disconnected_links_ignored(self):
         payload = {"nodes": [
             {"uid": "ap", "mesh_role": "master", "node_interfaces": [{
