@@ -101,6 +101,18 @@ def extract_mesh_wlan_details(
                         if normalized is not None:
                             values["mesh_connected_ap_band_mhz"] = normalized
                             break
+                # Bounded, read-only diagnostics from the exact AP/repeater
+                # interface owning this connected client link. Do not expose
+                # MACs, UIDs, names, addresses or arbitrary nested payloads.
+                # Empty diagnostics are omitted. These observations are not
+                # used for topology construction or band inference.
+                for scope, record in (
+                    ("connected_ap_interface", interface),
+                    ("connected_ap_channel", info if isinstance(info, dict) else {}),
+                ):
+                    diagnostic = _radio_fields(record)
+                    if diagnostic:
+                        values[f"mesh_wlan_{scope}_radio_fields"] = diagnostic
                 # Endpoint orientation is diagnostic only; do not relabel rates
                 # as client download/upload without validated AVM semantics.
                 values["mesh_rate_link_owner_is_node_1"] = node_uid == a
