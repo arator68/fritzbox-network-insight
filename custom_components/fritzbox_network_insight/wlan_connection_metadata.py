@@ -26,8 +26,8 @@ def connection_metadata(
         "role": {"value": "WLAN-Client", "source": "host_interface_type"}
     }
 
-    # Explicit frequency-band observation only; never infer from channel or
-    # the WLANConfiguration service instance.
+    # Prefer an explicit band observation. Channel fallback is allowed only
+    # for the endpoint-associated Mesh peer interface or client WLAN channel.
     for observation in details.values("wifi_frequency_band_mhz"):
         if observation.value in (2400, 5000, 6000):
             result["band"] = {
@@ -36,6 +36,35 @@ def connection_metadata(
                 "observed_at": observation.observed_at,
             }
             break
+
+    if "band" not in result:
+        # Do not infer 6 GHz from a bare channel number: 6 GHz channel
+        # numbering overlaps with 2.4 and 5 GHz.
+        # Only unambiguous, established 5-GHz channel numbers are used.
+        five_ghz_channels = {
+            36, 40, 44, 48, 52, 56, 60, 64,
+            100, 104, 108, 112, 116, 120, 124, 128,
+            132, 136, 140, 144, 149, 153, 157, 161,
+            165, 169, 173, 177,
+        }
+        for field in ("mesh_peer_interface_channel", "mesh_wifi_channel", "wifi_channel"):
+            for observation in details.values(field):
+                try:
+                    channel = int(observation.value)
+                except (TypeError, ValueError):
+                    continue
+                if channel in five_ghz_channels:
+                    result["band"] = {
+                        "value": "5 GHz",
+                        "source": "derived_from_wlan_channel",
+                        "source_field": field,
+                        "source_observation": observation.source,
+                        "channel": channel,
+                        "observed_at": observation.observed_at,
+                    }
+                    break
+            if "band" in result:
+                break
 
     # Require exactly one connected WLAN Mesh peer for this MAC. This is
     # reported association metadata, not a change to the topology graph.
