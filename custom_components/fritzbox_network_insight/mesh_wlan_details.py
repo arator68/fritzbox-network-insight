@@ -150,6 +150,28 @@ def extract_mesh_wlan_details(
                         interface_uid in link_interface_refs
                     )
                 values["mesh_connected_ap_interface_type"] = "WLAN"
+                # Frequency belongs to this exact connected AP radio, not to
+                # the repeater uplink or another WLAN interface.
+                # AVM may report MHz, kHz or Hz; reject unknown units.
+                if isinstance(info, dict):
+                    frequency = info.get("primary_freq")
+                    if isinstance(frequency, (int, float)) and not isinstance(frequency, bool):
+                        mhz = (
+                            frequency if 2000 <= frequency <= 8000 else
+                            frequency / 1000 if 2000000 <= frequency <= 8000000 else
+                            frequency / 1000000 if 2000000000 <= frequency <= 8000000000 else
+                            None
+                        )
+                        if mhz is not None:
+                            band = (
+                                2400 if 2400 <= mhz < 2500 else
+                                5000 if 4900 <= mhz < 5925 else
+                                6000 if 5925 <= mhz <= 7125 else
+                                None
+                            )
+                            if band is not None:
+                                values["mesh_connected_ap_primary_freq_mhz"] = round(mhz, 3)
+                                values["mesh_connected_ap_band_mhz"] = band
                 # Band belongs to the AP interface owning this connected client link.
                 # Never borrow another interface's band or infer from channel.
                 info = interface.get("current_channel_info")
