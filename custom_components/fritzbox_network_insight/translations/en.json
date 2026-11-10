@@ -144,11 +144,20 @@
         "data": {
           "back": "Back"
         }
+      },
+      "repeater_discovery": {
+        "title": "Set up discovered repeaters",
+        "description": "Select a detected repeater. Credentials are saved only after confirmation.",
+        "data": {
+          "host": "Discovered repeater",
+          "back": "Back"
+        }
       }
     },
     "error": {
       "required": "Fill all required fields.",
-      "cannot_connect": "Connection failed. Check repeater address and credentials."
+      "cannot_connect": "Connection failed. Check repeater address and credentials.",
+      "no_repeaters_found": "No additional repeaters detected. Check Mesh discovery or add a repeater manually."
     },
     "abort": {
       "no_devices": "No devices available."
