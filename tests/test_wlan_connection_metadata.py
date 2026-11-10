@@ -43,7 +43,7 @@ class WlanConnectionMetadataTests(unittest.TestCase):
         self.assertEqual(observed["peer"]["value"], "Repeater-Flur.koch.local")
         self.assertEqual(observed["peer"]["connection_scope"], "avm_reported_wlan_link")
 
-    def test_no_guesses_from_channel_or_disconnected_links(self):
+    def test_channel_band_without_disconnected_peer(self):
         details = details_module.DeviceDetails(self.MAC)
         details.add("mesh_wifi_channel", 104, source="avm_mesh")
         details.add("mesh_reported_link", {
@@ -52,7 +52,9 @@ class WlanConnectionMetadataTests(unittest.TestCase):
         observed = module.connection_metadata(
             self.MAC, {"active": True, "interface_type": "802.11"}, details, {}, {}
         )
-        self.assertEqual(set(observed), {"role"})
+        self.assertEqual(set(observed), {"role", "band"})
+        self.assertEqual(observed["band"]["value"], "5 GHz")
+        self.assertNotIn("peer", observed)
 
     def test_channel_104_derives_five_ghz_with_provenance(self):
         details = details_module.DeviceDetails(self.MAC)
