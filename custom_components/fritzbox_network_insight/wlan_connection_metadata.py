@@ -38,6 +38,19 @@ def connection_metadata(
             break
 
     if "band" not in result:
+        # The Mesh extractor associates this AP/repeater radio interface with
+        # the specific CONNECTED client link, rather than the router globally.
+        for observation in details.values("mesh_connected_ap_band_mhz"):
+            if observation.value in (2400, 5000, 6000):
+                result["band"] = {
+                    "value": {2400: "2,4 GHz", 5000: "5 GHz", 6000: "6 GHz"}[observation.value],
+                    "source": "avm_mesh_connected_ap_interface",
+                    "source_observation": observation.source,
+                    "observed_at": observation.observed_at,
+                }
+                break
+
+    if "band" not in result:
         # Channels 1-14 overlap 2.4 GHz and 6 GHz: never derive a band
         # from those channel numbers without an explicit band observation.
         # The listed 5 GHz primary channels do not overlap 6 GHz primary
