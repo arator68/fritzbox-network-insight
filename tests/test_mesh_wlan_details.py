@@ -114,6 +114,24 @@ class TestMeshWlanDetails(unittest.TestCase):
         })
         self.assertNotIn("wifi_signal_dbm", result)
 
+    def test_connected_ap_interface_band_is_client_scoped(self):
+        mac = "20:6E:F1:02:62:D8"
+        payload = {"nodes": [
+            {"uid": "repeater", "mesh_role": "slave", "node_interfaces": [
+                {"type": "WLAN", "current_channel": 7,
+                 "current_channel_info": {"frequency_band": "2.4 GHz"},
+                 "node_links": [{"uid": "l1", "state": "CONNECTED",
+                                 "node_1_uid": "repeater", "node_2_uid": "client"}]},
+                {"type": "WLAN", "current_channel": 104,
+                 "current_channel_info": {"frequency_band": "5 GHz"},
+                 "node_links": []}
+            ]},
+            {"uid": "client", "device_mac_address": mac},
+        ]}
+        result = extract(payload, {mac: mac})[mac][0]
+        self.assertEqual(result["mesh_connected_ap_band_mhz"], 2400)
+        self.assertEqual(result["mesh_wifi_channel"], 7)
+
     def test_unmatched_client_and_disconnected_links_ignored(self):
         payload = {"nodes": [
             {"uid": "ap", "mesh_role": "master", "node_interfaces": [{
