@@ -22,6 +22,10 @@ _WLAN_KEYS = (
     "mesh_rate_link_owner_is_node_1",
     "mesh_rate_client_is_node_1",
     "mesh_rate_link_has_source_target",
+    "mesh_connected_ap_interface_mac",
+    "mesh_connected_ap_interface_ref_matches_link",
+    "mesh_connected_ap_interface_type",
+    "mesh_connected_ap_band_mhz",
 )
 
 # Mesh radio metadata is recorded as raw source-specific dictionaries. Only
@@ -30,6 +34,8 @@ _MESH_RADIO_FIELDS = {
     "mesh_wlan_link_radio_fields": ("wifi_standard", "stream_count", "phy_mode", "wifi_mode", "wlan_mode"),
     "mesh_wlan_interface_radio_fields": ("wifi_standard", "stream_count", "phy_mode", "wifi_mode", "wlan_mode"),
     "mesh_wlan_channel_radio_fields": ("channel_width", "frequency_band"),
+    "mesh_wlan_connected_ap_interface_radio_fields": ("channel_width", "frequency_band"),
+    "mesh_wlan_connected_ap_channel_radio_fields": ("channel_width", "frequency_band"),
 }
 
 
@@ -86,6 +92,28 @@ def wlan_details_attribute(details: DeviceDetails | None, interface_type: Any) -
                     "raw_scope": scope,
                     **({"measurement_scope": "mesh_radio_channel"} if field == "channel_width" and scope == "channel" else {}),
                 })
+    # Schema diagnostics already filtered by mesh_wlan_details. Revalidate
+    # type labels and whitelist the only value-bearing radio fields.
+    for key in ("mesh_wlan_connected_ap_interface_schema", "mesh_wlan_connected_ap_channel_schema"):
+        for observation in details.values(key):
+            if not isinstance(observation.value, dict):
+                continue
+            safe = {}
+            for field, entry in observation.value.items():
+                if not isinstance(field, str) or not isinstance(entry, dict):
+                    continue
+                kind = entry.get("type")
+                if kind not in ("object", "array", "boolean", "number", "string", "null", "other"):
+                    continue
+                item = {"type": kind}
+                value = entry.get("value")
+                if field in ("current_channel", "frequency", "frequency_mhz", "frequency_band", "channel_width", "bandwidth") and isinstance(value, (int, float)) and not isinstance(value, bool):
+                    item["value"] = value
+                elif field in ("channel_width", "bandwidth") and isinstance(value, str) and len(value) <= 16 and all(c.isdigit() or c in " .MHzmhz" for c in value):
+                    item["value"] = value
+                safe[field] = item
+            if safe:
+                observations.append({"field": key, "value": safe, "source": observation.source, "observed_at": observation.observed_at})
     # Mesh peer is a reported MAC, not necessarily a confirmed physical AP.
     for observation in details.values("mesh_reported_link"):
         link = observation.value
