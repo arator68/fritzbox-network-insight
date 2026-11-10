@@ -6,6 +6,7 @@ from urllib.parse import urljoin, urlparse
 from urllib.request import HTTPDigestAuthHandler, HTTPPasswordMgrWithDefaultRealm, build_opener
 
 from fritzconnection import FritzConnection
+from .wlan_details import parse_wlan_list
 
 MAX_PAYLOAD_CHARS = 1_000_000
 
@@ -66,3 +67,47 @@ class RepeaterRawStore:
 
     def update(self, host: str, snapshot: dict) -> None:
         self.data[host] = snapshot
+
+    def client_values(self) -> dict[str, dict[str, dict[str, int]]]:
+        """Derive existing client fields from cached XML without network requests."""
+        result: dict[str, dict[str, dict[str, int]]] = {}
+        keys = (
+            "wifi_speed_mbps", "wifi_speed_rx_mbps",
+            "wifi_speed_max_mbps", "wifi_speed_rx_max_mbps",
+            "wifi_signal_strength", "wifi_channel", "wifi_channel_width",
+        )
+        for host, snapshot in self.data.items():
+            clients: dict[str, dict[str, int]] = {}
+            for actions in snapshot.get("services", {}).values():
+                xml = actions.get("WLANDeviceListXML")
+                if not isinstance(xml, str):
+                    continue
+                try:
+                    records = parse_wlan_list(xml)
+                except Exception:
+                    continue
+                for mac, fields in records.items():
+                    values = clients.setdefault(mac, {})
+                    for key in keys:
+                        value = fields.get(key)
+                        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                            values.setdefault("repeater_tr064_" + key, value)
+            result[host] = clients
+        return result
+
+    def summary(self, host: str) -> dict:
+        """Small, safe status summary; never expose raw XML in entity attributes."""
+        snapshot = self.data.get(host)
+        if snapshot is None:
+            return {"available": False}
+        services = snapshot.get("services", {})
+        return {
+            "available": True,
+            "observed_at": snapshot.get("observed_at"),
+            "wlan_services": sorted(services),
+            "client_count": len(self.client_values().get(host, {})),
+            "raw_xml_lists": sum(
+                isinstance(actions.get("WLANDeviceListXML"), str)
+                for actions in services.values()
+            ),
+        }
