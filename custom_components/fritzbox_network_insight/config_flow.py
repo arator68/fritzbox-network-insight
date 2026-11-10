@@ -138,6 +138,7 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             action = user_input["action"]
             if action == "__add__":
+                self._editing_repeater_host = None
                 return await self.async_step_repeater_edit()
             if action == "__back__":
                 return await self.async_step_init()
@@ -167,6 +168,9 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
         )
 
     async def async_step_repeater_edit(self, user_input=None, host=None):
+        if host is not None:
+            self._editing_repeater_host = host
+        host = getattr(self, "_editing_repeater_host", None)
         configs = self._repeater_configs()
         current = configs.get(host, {}) if host else {}
         if user_input is not None:
