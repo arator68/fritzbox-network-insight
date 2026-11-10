@@ -133,6 +133,23 @@ def extract_mesh_wlan_details(
                     continue
                 seen.add(signature)
                 values: dict[str, Any] = {"peer_node_uid": node_uid}
+                # Diagnostic interface identity: exact MAC of the WLAN radio
+                # that owns this CONNECTED link, not the repeater device MAC.
+                # Compare against link interface references when available.
+                radio_mac = normalize_mac(interface.get("mac_address"))
+                if radio_mac:
+                    values["mesh_connected_ap_interface_mac"] = radio_mac
+                interface_uid = str(interface.get("uid") or interface.get("id") or "")
+                link_interface_refs = {
+                    str(link.get(key))
+                    for key in ("node_interface_1_uid", "node_interface_2_uid")
+                    if link.get(key) is not None
+                }
+                if link_interface_refs:
+                    values["mesh_connected_ap_interface_ref_matches_link"] = (
+                        interface_uid in link_interface_refs
+                    )
+                values["mesh_connected_ap_interface_type"] = "WLAN"
                 # Band belongs to the AP interface owning this connected client link.
                 # Never borrow another interface's band or infer from channel.
                 info = interface.get("current_channel_info")
