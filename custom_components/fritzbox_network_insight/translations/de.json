@@ -144,11 +144,20 @@
         "data": {
           "back": "Zurück"
         }
+      },
+      "repeater_discovery": {
+        "title": "Erkannte Repeater einrichten",
+        "description": "Wähle einen erkannten Repeater aus. Die Zugangsdaten werden erst nach deiner Bestätigung gespeichert.",
+        "data": {
+          "host": "Erkannter Repeater",
+          "back": "Zurück"
+        }
       }
     },
     "error": {
       "required": "Bitte alle erforderlichen Felder ausfüllen.",
-      "cannot_connect": "Verbindung fehlgeschlagen. Repeater-Adresse und Zugangsdaten prüfen."
+      "cannot_connect": "Verbindung fehlgeschlagen. Repeater-Adresse und Zugangsdaten prüfen.",
+      "no_repeaters_found": "Keine weiteren Repeater erkannt. Bitte die Mesh-Erkennung prüfen oder den Repeater manuell hinzufügen."
     },
     "abort": {
       "no_devices": "Keine Geräte verfügbar."
