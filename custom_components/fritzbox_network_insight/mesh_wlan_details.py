@@ -25,6 +25,54 @@ def _radio_fields(record: Mapping[str, Any]) -> dict[str, str | int | float | bo
     }
 
 
+def _safe_interface_schema(record: Mapping[str, Any]) -> dict[str, Any]:
+    """Expose field names and types, not arbitrary values or nested content.
+
+    Only numeric channel/frequency values and bounded channel-width strings
+    are shown. Unknown fields reveal their key and type only. This keeps
+    credentials, addresses and device identifiers out of HA attributes.
+    """
+    result: dict[str, Any] = {}
+    for key, value in record.items():
+        if not isinstance(key, str) or len(key) > 64:
+            continue
+        lower = key.lower()
+        if any(token in lower for token in (
+            "pass", "secret", "token", "auth", "credential", "key",
+            "mac", "ip", "address", "name", "ssid", "uid", "serial",
+        )):
+            continue
+        if isinstance(value, dict):
+            kind = "object"
+        elif isinstance(value, list):
+            kind = "array"
+        elif isinstance(value, bool):
+            kind = "boolean"
+        elif isinstance(value, (int, float)):
+            kind = "number"
+        elif isinstance(value, str):
+            kind = "string"
+        elif value is None:
+            kind = "null"
+        else:
+            kind = "other"
+        item: dict[str, Any] = {"type": kind}
+        if lower in {"current_channel", "frequency", "frequency_mhz", "frequency_band"}:
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= 100000:
+                item["value"] = value
+        elif lower in {"channel_width", "bandwidth"}:
+            if isinstance(value, str) and len(value) <= 16 and all(
+                char.isdigit() or char in " .MHzmhz" for char in value
+            ):
+                item["value"] = value
+            elif isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= 10000:
+                item["value"] = value
+        result[key] = item
+        if len(result) >= 40:
+            break
+    return result
+
+
 from .device import normalize_mac
 
 
@@ -113,6 +161,15 @@ def extract_mesh_wlan_details(
                     diagnostic = _radio_fields(record)
                     if diagnostic:
                         values[f"mesh_wlan_{scope}_radio_fields"] = diagnostic
+                # Schema-only diagnostics of the exact connected AP interface.
+                # Unknown values are deliberately withheld for privacy.
+                for scope, record in (
+                    ("connected_ap_interface_schema", interface),
+                    ("connected_ap_channel_schema", info if isinstance(info, dict) else {}),
+                ):
+                    schema = _safe_interface_schema(record)
+                    if schema:
+                        values[f"mesh_wlan_{scope}"] = schema
                 # Endpoint orientation is diagnostic only; do not relabel rates
                 # as client download/upload without validated AVM semantics.
                 values["mesh_rate_link_owner_is_node_1"] = node_uid == a
