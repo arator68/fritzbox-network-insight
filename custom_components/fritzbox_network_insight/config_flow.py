@@ -95,81 +95,162 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class SnmpOptionsFlow(config_entries.OptionsFlow):
-    """Configure one SNMPv3 device by MAC; retain other configured devices."""
+    """Separate management screens for repeater and SNMP settings."""
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        hosts = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+    async def async_step_init(self, user_input=None):
+        if user_input is not None:
+            return await getattr(self, "async_step_" + user_input["section"])()
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema({
+                vol.Required("section"): vol.In({
+                    "repeaters": "Manage repeaters",
+                    "snmp": "Manage SNMP devices",
+                    "fritzbox": "FRITZ!Box connection information",
+                }),
+            }),
+        )
+
+    async def async_step_fritzbox(self, user_input=None):
+        """Existing FRITZ!Box credentials remain managed per integration entry."""
+        if user_input is not None:
+            return await self.async_step_init()
+        return self.async_show_form(
+            step_id="fritzbox",
+            data_schema=vol.Schema({vol.Required("back", default=True): bool}),
+        )
+
+    def _repeater_configs(self):
+        """Read new options or migrate the existing single-repeater configuration."""
+        configs = dict(self.config_entry.options.get("repeaters", {}))
+        old = self.config_entry.options.get("repeater_wlan_diagnostics", {})
+        if isinstance(old, dict) and old.get("host") and old["host"] not in configs:
+            configs[old["host"]] = {
+                "host": old["host"],
+                "username": old.get("username", "dslf-config"),
+                "password": old.get("password", ""),
+                "enabled": True,
+            }
+        return configs
+
+    async def async_step_repeaters(self, user_input=None):
+        configs = self._repeater_configs()
+        if user_input is not None:
+            action = user_input["action"]
+            if action == "__add__":
+                return await self.async_step_repeater_edit()
+            if action == "__back__":
+                return await self.async_step_init()
+            if action.startswith("edit:"):
+                return await self.async_step_repeater_edit(host=action[5:])
+            if action.startswith("toggle:"):
+                host = action[7:]
+                configs[host] = {**configs[host], "enabled": not configs[host].get("enabled", True)}
+            elif action.startswith("remove:"):
+                configs.pop(action[7:], None)
+            return self.async_create_entry(
+                title="", data={
+                    **self.config_entry.options,
+                    "repeaters": configs,
+                    "repeater_wlan_diagnostics": {},
+                },
+            )
+        actions = {"__add__": "Add repeater", "__back__": "Back"}
+        for host, config in sorted(configs.items()):
+            state = "enabled" if config.get("enabled", True) else "disabled"
+            actions[f"edit:{host}"] = f"Edit {host} ({state})"
+            actions[f"toggle:{host}"] = f"{'Disable' if config.get('enabled', True) else 'Enable'} {host}"
+            actions[f"remove:{host}"] = f"Remove {host}"
+        return self.async_show_form(
+            step_id="repeaters",
+            data_schema=vol.Schema({vol.Required("action"): vol.In(actions)}),
+        )
+
+    async def async_step_repeater_edit(self, user_input=None, host=None):
+        configs = self._repeater_configs()
+        current = configs.get(host, {}) if host else {}
+        if user_input is not None:
+            address = user_input["host"].strip()
+            username = user_input["username"].strip()
+            if not address or not username:
+                return self.async_show_form(
+                    step_id="repeater_edit",
+                    data_schema=self._repeater_schema(current, host),
+                    errors={"base": "required"},
+                )
+            password = user_input.get("password") or current.get("password", "")
+            if not password:
+                return self.async_show_form(
+                    step_id="repeater_edit",
+                    data_schema=self._repeater_schema(current, host),
+                    errors={"base": "required"},
+                )
+            if host and host != address:
+                configs.pop(host, None)
+            configs[address] = {
+                "host": address,
+                "username": username,
+                "password": password,
+                "enabled": user_input.get("enabled", True),
+            }
+            return self.async_create_entry(
+                title="", data={
+                    **self.config_entry.options,
+                    "repeaters": configs,
+                    "repeater_wlan_diagnostics": {},
+                },
+            )
+        return self.async_show_form(
+            step_id="repeater_edit",
+            data_schema=self._repeater_schema(current, host),
+        )
+
+    @staticmethod
+    def _repeater_schema(current, host):
+        return vol.Schema({
+            vol.Required("host", default=host or ""): str,
+            vol.Required("username", default=current.get("username", "dslf-config")): str,
+            vol.Optional("password"): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            ),
+            vol.Required("enabled", default=current.get("enabled", True)): bool,
+        })
+
+    async def async_step_snmp(self, user_input=None):
+        """Keep the existing SNMP configuration independent of repeaters."""
+        coordinator = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+        hosts = (coordinator.data or {}) if coordinator is not None else {}
         choices = {
             mac: f"{host.get('name') or mac} ({mac})"
-            for mac, host in sorted((hosts.data or {}).items())
-        } if hosts is not None else {}
+            for mac, host in sorted(hosts.items())
+        }
         if not choices:
             return self.async_abort(reason="no_devices")
-        if user_input is not None and user_input.get("mac") == "__repeater_diagnostics__":
-            return await self.async_step_repeater_diagnostics()
-        if user_input is not None and not all(user_input.get(k) for k in ("snmp_username", "auth_password", "priv_password")):
-            return self.async_show_form(step_id="init", errors={"base": "required"}, data_schema=self._init_schema(choices))
         if user_input is not None:
-            mac = user_input["mac"]
+            if not all(user_input.get(k) for k in ("snmp_username", "auth_password", "priv_password")):
+                return self.async_show_form(
+                    step_id="snmp", data_schema=self._snmp_schema(choices),
+                    errors={"base": "required"},
+                )
             devices = dict(self.config_entry.options.get("snmp_devices", {}))
-            devices[mac] = {
+            devices[user_input["mac"]] = {
                 "username": user_input["snmp_username"],
                 "auth_password": user_input["auth_password"],
                 "priv_password": user_input["priv_password"],
             }
             return self.async_create_entry(
-                title="", data={**self.config_entry.options, "snmp_devices": devices}
+                title="", data={**self.config_entry.options, "snmp_devices": devices},
             )
-        return self.async_show_form(step_id="init", data_schema=self._init_schema(choices))
+        return self.async_show_form(step_id="snmp", data_schema=self._snmp_schema(choices))
 
     @staticmethod
-    def _init_schema(choices: dict[str, str]) -> vol.Schema:
-        return vol.Schema({
-            vol.Required("mac"): vol.In({**choices, "__repeater_diagnostics__": "Configure repeater WLAN diagnostics"}),
-            vol.Optional("snmp_username"): str,
-            vol.Optional("auth_password"): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
-            ),
-            vol.Optional("priv_password"): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
-            ),
-        })
-
-
-    async def async_step_repeater_diagnostics(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        """Opt in to read-only WLAN diagnostics from one repeater."""
-        if user_input is not None:
-            host = user_input["host"].strip()
-            if not host:
-                return self.async_show_form(step_id="repeater_diagnostics", errors={"base": "invalid_host"},
-                                            data_schema=self._repeater_schema())
-            target_mac = normalize_mac(user_input["target_mac"])
-            if target_mac is None:
-                return self.async_show_form(step_id="repeater_diagnostics", errors={"base": "invalid_mac"}, data_schema=self._repeater_schema())
-            config = {
-                "target_mac": target_mac,
-                "host": host,
-                "username": user_input["username"].strip(),
-                "password": user_input["password"],
-            }
-            return self.async_create_entry(
-                title="", data={**self.config_entry.options, "repeater_wlan_diagnostics": config}
-            )
-        return self.async_show_form(
-            step_id="repeater_diagnostics", data_schema=self._repeater_schema()
+    def _snmp_schema(choices):
+        password = selector.TextSelector(
+            selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
         )
-
-    @staticmethod
-    def _repeater_schema() -> vol.Schema:
         return vol.Schema({
-            vol.Required("host"): str,
-            vol.Required("target_mac"): str,
-            vol.Required("username"): str,
-            vol.Required("password"): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
-            ),
+            vol.Required("mac"): vol.In(choices),
+            vol.Required("snmp_username"): str,
+            vol.Required("auth_password"): password,
+            vol.Required("priv_password"): password,
         })
