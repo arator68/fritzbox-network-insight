@@ -443,6 +443,18 @@ class FritzBoxHostStatusSensor(
             "interface_type": host["interface_type"],
             "seen_in_latest_scan": True,
         }
+        # Small repeater collection status; full raw responses stay in memory.
+        repeater_ip = host.get("ip_address")
+        repeater_configs = self.coordinator.entry.options.get("repeaters", {})
+        if isinstance(repeater_configs, dict):
+            for configured_host, config in repeater_configs.items():
+                if not isinstance(config, dict):
+                    continue
+                if config.get("host") == repeater_ip or configured_host == repeater_ip:
+                    attributes["repeater_raw_data"] = (
+                        self.coordinator.repeater_raw_store.summary(configured_host)
+                    )
+                    break
         # Expose switch-port measurements only for endpoints explicitly
         # identified as Ethernet. FDB reachability alone cannot establish
         # whether a device uses LAN or WLAN.
