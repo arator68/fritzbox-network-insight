@@ -44,6 +44,17 @@ class WlanDeviceAttributeTests(unittest.TestCase):
         self.assertNotIn("wifi_signal_rx_dbm", by_field)
         self.assertEqual(by_field["mesh_reported_wlan_peer_mac"]["value"], "E0:28:6D:C0:51:38")
 
+    def test_raw_mesh_rates_preserve_zero_and_units(self):
+        details = model.build_device_details("68:F6:3B:6B:48:0A", {})
+        details.add("mesh_rate_rx_kbps", 0, source="avm_mesh_radio", observed_at="mesh-time")
+        details.add("mesh_rate_tx_kbps", 433000, source="avm_mesh_radio", observed_at="mesh-time")
+        rows = formatter.wlan_details_attribute(details, "802.11")
+        by_field = {row["field"]: row for row in rows}
+        self.assertEqual(by_field["mesh_rate_rx_kbps"]["value"], 0)
+        self.assertEqual(by_field["mesh_rate_tx_kbps"]["value"], 433000)
+        self.assertEqual(by_field["mesh_rate_rx_kbps"]["source"], "avm_mesh_radio")
+        self.assertEqual(by_field["mesh_rate_tx_kbps"]["observed_at"], "mesh-time")
+
     def test_explicit_mesh_radio_metadata_keeps_source_and_scope(self):
         details = model.build_device_details("00:4B:12:69:4D:2C", {})
         details.add("mesh_wlan_link_radio_fields", {
