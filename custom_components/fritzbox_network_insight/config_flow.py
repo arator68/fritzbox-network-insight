@@ -108,6 +108,8 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
             return self.async_abort(reason="no_devices")
         if user_input is not None and user_input.get("mac") == "__repeater_diagnostics__":
             return await self.async_step_repeater_diagnostics()
+        if user_input is not None and not all(user_input.get(k) for k in ("snmp_username", "auth_password", "priv_password")):
+            return self.async_show_form(step_id="init", errors={"base": "required"}, data_schema=self._init_schema(choices))
         if user_input is not None:
             mac = user_input["mac"]
             devices = dict(self.config_entry.options.get("snmp_devices", {}))
@@ -119,19 +121,21 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
             return self.async_create_entry(
                 title="", data={**self.config_entry.options, "snmp_devices": devices}
             )
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema({
-                vol.Required("mac"): vol.In({**choices, "__repeater_diagnostics__": "Configure repeater WLAN diagnostics"}),
-                vol.Required("snmp_username"): str,
-                vol.Required("auth_password"): selector.TextSelector(
-                    selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
-                ),
-                vol.Required("priv_password"): selector.TextSelector(
-                    selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
-                ),
-            }),
-        )
+        return self.async_show_form(step_id="init", data_schema=self._init_schema(choices))
+
+    @staticmethod
+    def _init_schema(choices: dict[str, str]) -> vol.Schema:
+        return vol.Schema({
+            vol.Required("mac"): vol.In({**choices, "__repeater_diagnostics__": "Configure repeater WLAN diagnostics"}),
+            vol.Optional("snmp_username"): str,
+            vol.Optional("auth_password"): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            ),
+            vol.Optional("priv_password"): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            ),
+        })
+
 
     async def async_step_repeater_diagnostics(
         self, user_input: dict[str, Any] | None = None
@@ -157,7 +161,7 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
     @staticmethod
     def _repeater_schema() -> vol.Schema:
         return vol.Schema({
-            vol.Required("host", default="192.168.178.63"): str,
+            vol.Required("host"): str,
             vol.Required("username"): str,
             vol.Required("password"): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
