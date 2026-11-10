@@ -59,3 +59,29 @@ def fetch_repeater_wlan_diagnostics(
         if speed >= 0:
             results.setdefault("repeater_tr064_associated_speed_mbps", speed)
     return results
+
+
+def fetch_repeater_clients(
+    host: str, username: str, password: str, timeout: int = 10
+) -> dict[str, dict[str, int]]:
+    """Read every associated client, indexed by MAC, without inferring RX/TX.
+
+    The AVM WLAN device list can contain clients from several radio instances.
+    A MAC is published once even if several instances return the same client.
+    """
+    clients: dict[str, dict[str, int]] = {}
+    records = fetch_wlan_devices(host, username, password, timeout)
+    for mac, instances in records.items():
+        fields_out: dict[str, int] = {}
+        for fields in instances.values():
+            for key in (
+                "wifi_speed_mbps", "wifi_speed_rx_mbps",
+                "wifi_speed_max_mbps", "wifi_speed_rx_max_mbps",
+                "wifi_signal_strength", "wifi_channel", "wifi_channel_width",
+            ):
+                value = fields.get(key)
+                if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                    fields_out.setdefault("repeater_tr064_" + key, value)
+        if fields_out:
+            clients[mac] = fields_out
+    return clients
