@@ -26,6 +26,7 @@ _WLAN_KEYS = (
     "mesh_connected_ap_interface_ref_matches_link",
     "mesh_connected_ap_interface_type",
     "mesh_connected_ap_band_mhz",
+    "mesh_connected_ap_primary_freq_mhz",
 )
 
 # Mesh radio metadata is recorded as raw source-specific dictionaries. Only
