@@ -94,6 +94,16 @@ class WlanConnectionMetadataTests(unittest.TestCase):
         self.assertEqual(observed["band"]["value"], "2,4 GHz")
         self.assertEqual(observed["band"]["source"], "tr064")
 
+    def test_connected_repeater_interface_band_without_tr064(self):
+        details = details_module.DeviceDetails(self.MAC)
+        details.add("mesh_connected_ap_band_mhz", 2400, source="avm_mesh_radio")
+        details.add("mesh_peer_interface_channel", 7, source="avm_mesh_radio")
+        observed = module.connection_metadata(
+            self.MAC, {"active": True, "interface_type": "802.11"}, details, {}, {}
+        )
+        self.assertEqual(observed["band"]["value"], "2,4 GHz")
+        self.assertEqual(observed["band"]["source"], "avm_mesh_connected_ap_interface")
+
     def test_offline_and_non_wlan_have_no_connection_metadata(self):
         details = details_module.DeviceDetails(self.MAC)
         for host in ({"active": False, "interface_type": "802.11"},
