@@ -85,6 +85,22 @@ def extract_mesh_wlan_details(
                     continue
                 seen.add(signature)
                 values: dict[str, Any] = {"peer_node_uid": node_uid}
+                # Band belongs to the AP interface owning this connected client link.
+                # Never borrow another interface's band or infer from channel.
+                info = interface.get("current_channel_info")
+                for record in (info if isinstance(info, dict) else {}, interface):
+                    raw_band = record.get("frequency_band")
+                    if raw_band in (2400, 5000, 6000):
+                        values["mesh_connected_ap_band_mhz"] = raw_band
+                        break
+                    if isinstance(raw_band, str):
+                        normalized = {
+                            "2.4ghz": 2400, "2,4ghz": 2400,
+                            "5ghz": 5000, "6ghz": 6000,
+                        }.get(raw_band.strip().lower().replace(" ", ""))
+                        if normalized is not None:
+                            values["mesh_connected_ap_band_mhz"] = normalized
+                            break
                 # Endpoint orientation is diagnostic only; do not relabel rates
                 # as client download/upload without validated AVM semantics.
                 values["mesh_rate_link_owner_is_node_1"] = node_uid == a
