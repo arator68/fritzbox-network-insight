@@ -66,6 +66,24 @@ class WlanMetricTests(unittest.TestCase):
         self.assertEqual(signal["source_field"], "mesh_rx_rcpi_raw")
         self.assertEqual(signal["measurement_scope"], "mesh_signal_raw")
 
+    def test_mesh_signal_preferred_over_tr064(self):
+        rows = [
+            {"field": "wifi_signal_strength", "value": 70, "source": "tr064"},
+            {"field": "mesh_rx_rcpi_raw", "value": -45, "source": "avm_mesh_radio"},
+        ]
+        signal = module.metric_observation(rows, "signal_strength")
+        self.assertEqual(signal["value"], -45)
+        self.assertEqual(signal["source_field"], "mesh_rx_rcpi_raw")
+
+    def test_invalid_mesh_signal_falls_back_to_tr064(self):
+        rows = [
+            {"field": "wifi_signal_strength", "value": 70, "source": "tr064"},
+            {"field": "mesh_rx_rcpi_raw", "value": 255, "source": "avm_mesh_radio"},
+        ]
+        signal = module.metric_observation(rows, "signal_strength")
+        self.assertEqual(signal["value"], 70)
+        self.assertEqual(signal["source_field"], "wifi_signal_strength")
+
     def test_zero_rate_is_valid(self):
         self.assertEqual(module.metric_observation([{"field": "wifi_rate_rx_mbps", "value": 0}], "rx_rate")["value"], 0)
 
