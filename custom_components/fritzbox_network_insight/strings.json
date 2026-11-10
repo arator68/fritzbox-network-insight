@@ -97,5 +97,53 @@
         "name": "Connected to"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Manage settings",
+        "data": {
+          "section": "Section"
+        }
+      },
+      "fritzbox": {
+        "title": "FRITZ!Box connection",
+        "description": "This FRITZ!Box's credentials are managed by its integration entry.",
+        "data": {
+          "back": "Back"
+        }
+      },
+      "repeaters": {
+        "title": "Manage repeaters",
+        "data": {
+          "action": "Choose action"
+        }
+      },
+      "repeater_edit": {
+        "title": "Add or edit repeater",
+        "description": "Leave password empty when editing to retain the saved password. WLAN clients are matched automatically by MAC.",
+        "data": {
+          "host": "Repeater address",
+          "username": "Username",
+          "password": "Repeater password",
+          "enabled": "Enabled"
+        }
+      },
+      "snmp": {
+        "title": "Configure SNMP device",
+        "data": {
+          "mac": "Device",
+          "snmp_username": "SNMP username",
+          "auth_password": "Authentication password",
+          "priv_password": "Privacy password"
+        }
+      }
+    },
+    "error": {
+      "required": "Fill all required fields."
+    },
+    "abort": {
+      "no_devices": "No devices available."
+    }
   }
 }
