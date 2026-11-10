@@ -1,7 +1,4 @@
-"""Bounded, persistent read-only TR-064 repeater response snapshots.
-
-Snapshots contain AVM response payloads, never credentials or HTTP headers.
-"""
+"""Read-only TR-064 repeater responses retained only in memory."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -9,9 +6,7 @@ from urllib.parse import urljoin, urlparse
 from urllib.request import HTTPDigestAuthHandler, HTTPPasswordMgrWithDefaultRealm, build_opener
 
 from fritzconnection import FritzConnection
-from homeassistant.helpers.storage import Store
 
-MAX_HISTORY = 12
 MAX_PAYLOAD_CHARS = 1_000_000
 
 
@@ -64,26 +59,10 @@ def fetch_repeater_raw(host: str, username: str, password: str, timeout: int = 1
 
 
 class RepeaterRawStore:
-    """Keep the last successful snapshot and bounded history per repeater."""
+    """Keep only the latest successful response per repeater in memory."""
 
-    def __init__(self, hass, entry_id: str) -> None:
-        self._store = Store(hass, 1, f"fritzbox_network_insight.repeater_raw.{entry_id}")
-        self.data: dict[str, list[dict]] = {}
+    def __init__(self) -> None:
+        self.data: dict[str, dict] = {}
 
-    async def async_load(self) -> None:
-        try:
-            loaded = await self._store.async_load()
-            if isinstance(loaded, dict):
-                self.data = {
-                    host: snapshots[-MAX_HISTORY:]
-                    for host, snapshots in loaded.items()
-                    if isinstance(host, str) and isinstance(snapshots, list)
-                }
-        except Exception:
-            self.data = {}
-
-    async def async_add(self, host: str, snapshot: dict) -> None:
-        history = self.data.setdefault(host, [])
-        history.append(snapshot)
-        del history[:-MAX_HISTORY]
-        await self._store.async_save(self.data)
+    def update(self, host: str, snapshot: dict) -> None:
+        self.data[host] = snapshot
