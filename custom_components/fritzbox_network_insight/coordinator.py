@@ -22,7 +22,7 @@ from .mac_vendor import lookup_mac_vendor
 from .mesh import fetch_mesh, parse_mesh
 from .mesh_wlan_details import extract_mesh_wlan_details
 from .wlan_details import fetch_wlan_devices
-from .repeater_wlan_diagnostics import fetch_repeater_wlan_diagnostics
+from .repeater_wlan_diagnostics import fetch_repeater_wlan_diagnostics, fetch_repeater_clients
 from .device_details import (
     DeviceDetails, details_from_host, add_snmp_details,
     add_mesh_link_details, add_lldp_link_details, add_wlan_details,
@@ -85,6 +85,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self._wlan_last_attempt: float = 0.0
         self._repeater_diag_last_attempt: float = 0.0
         self._repeater_diag_values: dict[str, int] = {}
+        self._repeater_client_values: dict[str, dict[str, dict[str, int]]] = {}
         self._repeater_diag_observed_at: str | None = None
         self._snmp_last_attempt: float = 0.0
         self._snmp_scan_lock = asyncio.Lock()
@@ -441,6 +442,32 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                     _LOGGER.debug("Optional repeater WLAN diagnostics unavailable", exc_info=True)
         else:
             self._repeater_diag_values = {}
+        # All-client repeater observations. Existing single-target options are
+        # migrated in the options UI; until then keep the legacy path above.
+        repeater_configs = dict(self.entry.options.get("repeaters", {}))
+        if repeater_configs:
+            now_clients = monotonic()
+            if not self._repeater_diag_last_attempt or now_clients - self._repeater_diag_last_attempt >= 300:
+                self._repeater_diag_last_attempt = now_clients
+                observations = {}
+                for repeater_host, config in repeater_configs.items():
+                    if not isinstance(config, dict) or not config.get("enabled", True):
+                        continue
+                    if not all(config.get(k) for k in ("host", "username", "password")):
+                        continue
+                    try:
+                        observations[repeater_host] = await self.hass.async_add_executor_job(
+                            fetch_repeater_clients,
+                            config["host"], config["username"], config["password"],
+                            self.client.timeout,
+                        )
+                    except Exception:
+                        _LOGGER.debug("Repeater WLAN clients unavailable for %s",
+                                      repeater_host, exc_info=True)
+                self._repeater_client_values = observations
+                self._repeater_diag_observed_at = datetime.now(timezone.utc).isoformat()
+        else:
+            self._repeater_client_values = {}
         await self._async_refresh_snmp_topology(indexed)
         # Mesh refresh every 15 minutes; keep the last successful result.
         now_mesh = monotonic()
@@ -538,6 +565,12 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                 for key, value in self._repeater_diag_values.items():
                     details.add(key, value, source="tr064_repeater_diagnostics",
                                 observed_at=self._repeater_diag_observed_at)
+            for repeater_host, clients in self._repeater_client_values.items():
+                for key, value in clients.get(mac, {}).items():
+                    details.add(
+                        key, value, source=f"tr064_repeater:{repeater_host}",
+                        observed_at=self._repeater_diag_observed_at,
+                    )
             for radio in self._mesh_wlan_details.get(mac, []):
                 for key, value in radio.items():
                     details.add(
