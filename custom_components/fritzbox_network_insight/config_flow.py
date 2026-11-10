@@ -144,10 +144,59 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
             }
         return configs
 
+    def _discovered_repeaters(self):
+        """Offer plausible Mesh repeaters without automatically trusting credentials.
+
+        Mesh slaves may also be FRITZ!Boxes, so never enroll every slave.
+        """
+        coordinator = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+        candidates = {}
+        if coordinator is None:
+            return candidates
+        for device in (coordinator.data or {}).values():
+            name = str(device.get("name") or device.get("hostname") or "")
+            kind = str(device.get("device_type") or "").lower()
+            role = str(device.get("mesh_role") or "").lower()
+            address = device.get("ip_address") or device.get("ipv4_address") or device.get("ip")
+            if not address:
+                continue
+            if kind in ("repeater", "wifi_repeater", "wlan_repeater") or (
+                role == "slave" and "repeater" in name.lower()
+            ):
+                candidates[address] = name or address
+        return candidates
+
+    async def async_step_repeater_discovery(self, user_input=None):
+        configured = self._repeater_configs()
+        candidates = {
+            address: name for address, name in self._discovered_repeaters().items()
+            if address not in configured
+        }
+        if not candidates:
+            return self.async_show_form(
+                step_id="repeater_discovery",
+                data_schema=vol.Schema({vol.Required("back", default=True): bool}),
+                errors={"base": "no_repeaters_found"},
+            )
+        if user_input is not None:
+            self._editing_repeater_host = None
+            self._discovered_repeater_address = user_input["host"]
+            return await self.async_step_repeater_edit()
+        return self.async_show_form(
+            step_id="repeater_discovery",
+            data_schema=vol.Schema({
+                vol.Required("host"): vol.In({
+                    address: f"{name} ({address})" for address, name in sorted(candidates.items())
+                }),
+            }),
+        )
+
     async def async_step_repeaters(self, user_input=None):
         configs = self._repeater_configs()
         if user_input is not None:
             action = user_input["action"]
+            if action == "__discover__":
+                return await self.async_step_repeater_discovery()
             if action == "__add__":
                 self._editing_repeater_host = None
                 return await self.async_step_repeater_edit()
@@ -169,7 +218,8 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
                     "repeater_wlan_diagnostics": {},
                 },
             )
-        actions = {"__add__": self._label("Repeater hinzufügen", "Add repeater"),
+        actions = {"__discover__": self._label("Erkannte Repeater übernehmen", "Set up discovered repeaters"),
+                   "__add__": self._label("Repeater hinzufügen", "Add repeater"),
                    "__back__": self._label("Zurück", "Back")}
         for host, config in sorted(configs.items()):
             enabled = config.get("enabled", True)
@@ -223,7 +273,7 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
             if not address or not username:
                 return self.async_show_form(
                     step_id="repeater_edit",
-                    data_schema=self._repeater_schema(current, host),
+                    data_schema=self._repeater_schema(current, host or getattr(self, "_discovered_repeater_address", None)),
                     errors={"base": "required"},
                 )
             password = user_input.get("password") or current.get("password", "")
@@ -235,6 +285,7 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
                 )
             if host and host != address:
                 configs.pop(host, None)
+            self._discovered_repeater_address = None
             configs[address] = {
                 "host": address,
                 "username": username,
