@@ -12,6 +12,7 @@ from homeassistant.helpers import selector
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
+from .device import normalize_mac
 from .fritzbox_client import (
     FritzBoxAuthenticationError,
     FritzBoxClient,
@@ -146,7 +147,11 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
             if not host:
                 return self.async_show_form(step_id="repeater_diagnostics", errors={"base": "invalid_host"},
                                             data_schema=self._repeater_schema())
+            target_mac = normalize_mac(user_input["target_mac"])
+            if target_mac is None:
+                return self.async_show_form(step_id="repeater_diagnostics", errors={"base": "invalid_mac"}, data_schema=self._repeater_schema())
             config = {
+                "target_mac": target_mac,
                 "host": host,
                 "username": user_input["username"].strip(),
                 "password": user_input["password"],
@@ -162,6 +167,7 @@ class SnmpOptionsFlow(config_entries.OptionsFlow):
     def _repeater_schema() -> vol.Schema:
         return vol.Schema({
             vol.Required("host"): str,
+            vol.Required("target_mac"): str,
             vol.Required("username"): str,
             vol.Required("password"): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
