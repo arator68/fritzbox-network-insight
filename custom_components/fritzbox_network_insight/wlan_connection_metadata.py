@@ -38,9 +38,10 @@ def connection_metadata(
             break
 
     if "band" not in result:
-        # Do not infer 6 GHz from a bare channel number: 6 GHz channel
-        # numbering overlaps with 2.4 and 5 GHz.
-        # Channel 1-14 is conventionally 2.4 GHz on legacy FRITZ!Box\n        # networks, but overlaps 6-GHz numbering; mark it as inferred.
+        # Channels 1-14 overlap 2.4 GHz and 6 GHz: never derive a band
+        # from those channel numbers without an explicit band observation.
+        # The listed 5 GHz primary channels do not overlap 6 GHz primary
+        # channel numbering. Do not infer from other channel numbers.
         five_ghz_channels = {
             36, 40, 44, 48, 52, 56, 60, 64,
             100, 104, 108, 112, 116, 120, 124, 128,
@@ -53,7 +54,7 @@ def connection_metadata(
                     channel = int(observation.value)
                 except (TypeError, ValueError):
                     continue
-                band = "2,4 GHz" if 1 <= channel <= 14 else ("5 GHz" if channel in five_ghz_channels else None)
+                band = "5 GHz" if channel in five_ghz_channels else None
                 if band:
                     result["band"] = {
                         "value": band,
