@@ -460,6 +460,7 @@ class FritzBoxHostStatusSensor(
             self._mac,
             host,
             self.coordinator.get_combined_topology_snapshot(),
+            self.coordinator.manual_links,
         )
         # Expose switch-port measurements only for endpoints explicitly
         # identified as Ethernet. FDB reachability alone cannot establish
