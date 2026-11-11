@@ -10,6 +10,7 @@ def connection_details(
     mac: str,
     host: Mapping[str, Any],
     snapshot: Mapping[str, Any],
+    manual_links: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Project combined topology evidence onto one MAC without rescanning."""
     interface = str(host.get("interface_type") or "").strip().lower()
@@ -65,6 +66,34 @@ def connection_details(
             "observed_at": link.get("observed_at"),
         }
 
+    # User confirmations are stored by the existing manual topology service.
+    # They are not LLDP evidence and must remain labeled separately.
+    for link in manual_links or []:
+        if not isinstance(link, Mapping) or link.get("confirmation") != "user_confirmed":
+            continue
+        source = normalize_mac(link.get("source_mac"))
+        remote = normalize_mac(link.get("target_mac"))
+        if source is None or remote is None or source == remote:
+            continue
+        if target == source:
+            peer = remote
+            port = link.get("bridge_port") or None
+        elif target == remote:
+            peer = source
+            port = None  # bridge_port belongs to the switch, not this endpoint
+        else:
+            continue
+        if any(item["connected_to_mac"] == peer for item in direct.values()):
+            continue  # LLDP already confirms this MAC pair
+        direct[(peer, str(port) if port else None)] = {
+            "connected_to": names.get(peer, peer),
+            "connected_to_mac": peer,
+            "connected_to_port": str(port) if port else None,
+            "peer_port": str(link.get("bridge_port")) if target == remote and link.get("bridge_port") else None,
+            "evidence": "user_confirmed",
+            "observed_at": None,
+        }
+
     connections = sorted(
         direct.values(),
         key=lambda item: (item["connected_to_mac"], item["connected_to_port"] or ""),
@@ -72,7 +101,7 @@ def connection_details(
     result["connections"] = connections
     result["connection_count"] = len(connections)
     if connections:
-        result["connection_evidence"] = "lldp_last_observed"
+        result["connection_evidence"] = (connections[0]["evidence"] if len(connections) == 1 else "multiple_confirmed_sources")
     if len(connections) == 1:
         only = connections[0]
         result.update({
