@@ -59,24 +59,6 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         add_link(source, target, medium="lan", evidence="lldp",
                  state=None, details=item)
 
-    # Explicit operator-confirmed physical links are a separate evidence
-    # channel. They never masquerade as LLDP observations.
-    for item in snapshot.get("manual_links", []):
-        if not isinstance(item, dict):
-            continue
-        source = normalize_mac(item.get("source_mac"))
-        target = normalize_mac(item.get("target_mac"))
-        if not source or not target or source == target:
-            continue
-        if frozenset((source, target)) in confirmed_pairs:
-            # LLDP is already stronger evidence for this physical pair.
-            continue
-        if item.get("confirmation") != "user_confirmed":
-            continue
-        confirmed_pairs.add(frozenset((source, target)))
-        add_link(source, target, medium="lan", evidence="user_confirmed",
-                 state=None, details=item)
-
     for item in snapshot.get("mesh_links", []):
         if not isinstance(item, dict):
             continue
@@ -267,185 +249,16 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             "direct_device_without_lldp_confirmed": False,
         }
 
-    # Check port-specific operator confirmations against the latest saved FDB
-    # snapshot. Absence is not a conflict: FDB entries can age out. A MAC
-    # observed on another port of the SAME switch and VLAN is contradictory
-    # evidence, but does not authorize deleting the user's confirmation.
-    manual_link_checks: list[dict[str, Any]] = []
-    observed_by_switch: dict[tuple[str, str, str], set[str]] = defaultdict(set)
-    for group in fdb_port_groups:
-        for mac in group["reachable_macs"]:
-            observed_by_switch[(group["switch_mac"], mac, group["vlan_id"])].add(
-                group["bridge_port"]
-            )
-    for item in snapshot.get("manual_links", []):
-        if not isinstance(item, dict) or item.get("confirmation") != "user_confirmed":
-            continue
-        source = normalize_mac(item.get("source_mac"))
-        target = normalize_mac(item.get("target_mac"))
-        if not source or not target or source == target:
-            continue
-        expected_port = str(item.get("bridge_port") or "")
-        vlan = str(item.get("vlan_id") or "")
-        observed_ports = sorted(observed_by_switch.get((source, target, vlan), set()))
-        if not expected_port:
-            status = "unverifiable_no_port"
-        elif expected_port in observed_ports:
-            status = "consistent_with_fdb"
-        elif observed_ports:
-            status = "port_conflict"
-        else:
-            status = "not_observed"
-        check = {
-            "source_mac": source, "target_mac": target,
-            "expected_bridge_port": expected_port, "vlan_id": vlan,
-            "observed_bridge_ports": observed_ports,
-            "status": status, "confirmation_preserved": True,
-            "evidence": "last_saved_fdb_snapshot",
-        }
-        manual_link_checks.append(check)
-        if status == "port_conflict":
-            conflicts.append({"reason": "manual_link_port_conflict", **check})
-            for link in links:
-                if (link["evidence"] == "user_confirmed"
-                        and link["source_mac"] == source
-                        and link["target_mac"] == target):
-                    link["confirmation_status"] = "port_conflict"
-                    link["state"] = "needs_review"
-
-    # Attach user-confirmed physical neighbors to matching FDB segments
-    # without turning the remaining FDB members into direct links.
-    for group in fdb_port_groups:
-        source = group["switch_mac"]
-        confirmed_manual = [
-            {"mac": link["target_mac"], "evidence": "user_confirmed"}
-            for link in links
-            if link["evidence"] == "user_confirmed"
-            and link.get("state") != "needs_review"
-            and link["source_mac"] == source
-            and link["target_mac"] in group["reachable_macs"]
-            and (
-                not link["details"].get("bridge_port")
-                or str(link["details"]["bridge_port"]) == group["bridge_port"]
-            )
-            and (
-                not link["details"].get("vlan_id")
-                or str(link["details"]["vlan_id"]) == group["vlan_id"]
-            )
-        ]
-        group["user_confirmed_neighbors"] = confirmed_manual
-        if confirmed_manual:
-            group["port_analysis"]["downstream_switch_candidates"] = [
-                candidate for candidate in group["port_analysis"]["downstream_switch_candidates"]
-                if candidate["mac"] not in {n["mac"] for n in confirmed_manual}
-            ]
-
-    # Confirmed downstream switches provide a *branch context* for FDB
-    # observations. They do not prove which downstream switch port or cable
-    # a reachable endpoint uses. WLAN endpoints remain WLAN attachments.
-    downstream_branches: list[dict[str, Any]] = []
-    for group in fdb_port_groups:
-        confirmed_switches = [
-            neighbor for neighbor in group["user_confirmed_neighbors"]
-            if any(token in str(nodes.get(neighbor["mac"], {}).get("name") or "").lower()
-                   for token in ("switch", "tl-sg", "dgs-", "netgear gs"))
-        ]
-        if not confirmed_switches:
-            continue
-        # A branch can be uniquely attributed only when exactly one switch
-        # is confirmed on this reporting port/VLAN.
-        if len(confirmed_switches) != 1:
-            continue
-        switch_mac = confirmed_switches[0]["mac"]
-        observed = [
-            {
-                "mac": device["mac"],
-                "name": device["name"],
-                "ip_address": device["ip_address"],
-                "evidence": "fdb_reachability",
-                "physical_attachment_confirmed": False,
-            }
-            for device in group["devices"]
-            if device["mac"] != switch_mac
-            and device["connection_class"] == "fdb_reachable_only"
-        ]
-        downstream_branches.append({
-            "upstream_switch_mac": group["switch_mac"],
-            "upstream_bridge_port": group["bridge_port"],
-            "vlan_id": group["vlan_id"],
-            "downstream_switch_mac": switch_mac,
-            "downstream_switch_name": str(nodes.get(switch_mac, {}).get("name") or ""),
-            "uplink_evidence": "user_confirmed",
-            "reachable_lan_candidates": observed,
-            "candidate_count": len(observed),
-            "downstream_port_known": False,
-            "candidate_direct_links_confirmed": False,
-        })
-
-    # Structured graph view: a confirmed cable to the downstream switch and
-    # a separate set of FDB-only branch members. Membership is deliberately
-    # NOT an edge in 'links' and does not assert a downstream cable.
-    graph_branches: list[dict[str, Any]] = []
-    for branch in downstream_branches:
-        upstream = branch["upstream_switch_mac"]
-        downstream = branch["downstream_switch_mac"]
-        matching_links = [
-            link for link in links
-            if link["medium"] == "lan"
-            and frozenset((link["source_mac"], link["target_mac"]))
-                == frozenset((upstream, downstream))
-            and link["evidence"] in ("lldp", "user_confirmed")
-            and link.get("state") != "needs_review"
-        ]
-        if len(matching_links) != 1:
-            # A branch without one unambiguous physical uplink stays out
-            # of the structured physical graph.
-            continue
-        graph_branches.append({
-            "branch_id": (
-                f'{upstream}:{branch["upstream_bridge_port"]}:'
-                f'{branch["vlan_id"]}:{downstream}'
-            ),
-            "parent_mac": upstream,
-            "switch_mac": downstream,
-            "switch_name": branch["downstream_switch_name"],
-            "uplink": {
-                "source_mac": upstream,
-                "target_mac": downstream,
-                "medium": "lan",
-                "evidence": matching_links[0]["evidence"],
-                "bridge_port": branch["upstream_bridge_port"],
-                "vlan_id": branch["vlan_id"],
-                "physical_link_confirmed": True,
-            },
-            "members": [
-                {
-                    "mac": device["mac"],
-                    "name": device["name"],
-                    "ip_address": device["ip_address"],
-                    "relationship": "reachable_in_branch",
-                    "evidence": "fdb_reachability",
-                    "physical_link_confirmed": False,
-                    "downstream_port_known": False,
-                }
-                for device in branch["reachable_lan_candidates"]
-            ],
-            "member_count": branch["candidate_count"],
-        })
-
     # Uniform, evidence-preserving LAN inventory for every observed port.
     # These are port observations, not automatically inferred cables.
     lan_port_memberships: list[dict[str, Any]] = []
     for group in fdb_port_groups:
         lldp_macs = {neighbor["mac"] for neighbor in group["lldp_neighbors"]}
-        manual_macs = {neighbor["mac"] for neighbor in group["user_confirmed_neighbors"]}
         members: list[dict[str, Any]] = []
         for device in group["devices"]:
             mac = device["mac"]
             if mac in lldp_macs:
                 relation, evidence, confirmed = "confirmed_neighbor", "lldp", True
-            elif mac in manual_macs:
-                relation, evidence, confirmed = "confirmed_neighbor", "user_confirmed", True
             elif device["connection_class"] == "wlan_reachable_via_port":
                 relation, evidence, confirmed = "wlan_transit", "avm_mesh", False
             else:
@@ -486,7 +299,7 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         device = group["devices"][0]
         if device["connection_class"] != "fdb_reachable_only":
             continue
-        if group["lldp_neighbors"] or group["user_confirmed_neighbors"]:
+        if group["lldp_neighbors"]:
             continue
         if not device["known_host"]:
             continue
@@ -521,7 +334,7 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         matching = [
             link for link in links
             if link["medium"] == "lan"
-            and link["evidence"] in ("lldp", "user_confirmed")
+            and link["evidence"] == "lldp"
             and frozenset((link["source_mac"], link["target_mac"])) == pair
             and link.get("state") != "needs_review"
         ]
@@ -560,7 +373,6 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             "evidence": "fdb_reachability",
             "physical_topology_confirmed": False,
             "lldp_confirmed_neighbors": list(group["lldp_neighbors"]),
-            "user_confirmed_neighbors": list(group["user_confirmed_neighbors"]),
             "downstream_switch_candidates": list(
                 analysis["downstream_switch_candidates"]
             ),
@@ -574,22 +386,19 @@ def build_internal_graph(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "reachability": reachability,
         "fdb_port_groups": fdb_port_groups,
         "network_segments": network_segments,
-        "downstream_branches": downstream_branches,
-        "graph_branches": graph_branches,
-        "graph_branch_count": len(graph_branches),
+        "downstream_branches": [],
+        "graph_branches": [],
+        "graph_branch_count": 0,
         "lan_port_memberships": lan_port_memberships,
         "lan_port_membership_count": len(lan_port_memberships),
         "physical_link_candidates": physical_link_candidates,
         "physical_link_candidate_count": len(physical_link_candidates),
         "port_history": port_history,
         "port_history_count": len(port_history),
-        "downstream_branch_count": len(downstream_branches),
+        "downstream_branch_count": 0,
         "mesh_lan_observations": mesh_lan_observations,
         "wlan_attachments": attachments,
         "conflicts": conflicts,
-        "manual_link_checks": manual_link_checks,
-        "manual_link_check_count": len(manual_link_checks),
-        "manual_link_port_conflict_count": sum(c["status"] == "port_conflict" for c in manual_link_checks),
         "node_count": len(nodes),
         "link_count": len(links),
         "wlan_attachment_count": len(attachments),
