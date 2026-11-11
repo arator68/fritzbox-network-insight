@@ -21,7 +21,6 @@ from .discovery_result import ManualDiscoveryResultSensor
 from .wlan_device_attributes import wlan_details_attribute
 from .wlan_metric_sensors import WLAN_METRICS, metric_observation
 from .wlan_connection_metadata import connection_metadata
-from .connection_details import connection_details
 
 VISIBLE_WLAN_METRICS = (
     "channel", "channel_width", "signal_strength",
@@ -444,13 +443,6 @@ class FritzBoxHostStatusSensor(
             "interface_type": host["interface_type"],
             "seen_in_latest_scan": True,
         }
-        attributes["connection_details"] = connection_details(
-            self._mac,
-            host,
-            self.coordinator.data or {},
-            self.coordinator.topology_observations,
-            self.coordinator.fdb_observations,
-        )
         # Small repeater collection status; full raw responses stay in memory.
         repeater_ip = host.get("ip_address")
         repeater_configs = self.coordinator.entry.options.get("repeaters", {})
