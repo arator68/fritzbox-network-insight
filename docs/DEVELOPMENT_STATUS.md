@@ -1,4 +1,35 @@
-# Entwicklungsstand – FRITZ!Box Network Insight
+# Aktueller Entwicklungsstand – 11.11.2026
+
+**Branch:** `develop` · **Letzter Merge:** PR #39 (WLAN Connection Metadata und Repeater-Rohdatendiagnose), Squash-Commit `cecb8a35b17569f62abca257305970442400751b`. **Status:** Entwicklungsstand, kein Release auf `main`.
+
+> Die nachfolgenden älteren Abschnitte sind historische Arbeitsnotizen. Insbesondere die dort genannten offenen PRs und der Stand vom 09.11.2026 sind nicht mehr als aktuelle Statusmeldung zu verstehen.
+
+## Aktuell integriert und bestätigt
+
+- MAC-Adresse als primäre Geräteidentität; vorhandene Statussensoren, Hersteller-/OUI-Informationen, DNS-Namen, Geräteklassifizierung und LAN/WLAN-Schnittstelleninformationen.
+- SNMP-/LLDP-/FDB-Grundlagen für Switch-Portbeobachtungen. FDB belegt nur Erreichbarkeit über einen Port, **keine direkte Kabelverbindung**. LLDP-Beobachtungen und gespeicherte Topologiedaten sind ebenfalls nicht automatisch Live-Nachweise.
+- WLAN-Metriken und AVM-Mesh-Verbindungsinformationen; getrennte Quellen statt erfundener RX-/TX-Werte.
+- Repeater-WLAN-Rohdaten: automatische TR-064-Abfrage der konfigurierten Repeater, letzter erfolgreicher Snapshot **nur im Arbeitsspeicher**, **keine Historie, kein .storage**; erneute Erfassung nach HA-Neustart.
+- Antwortbasierte Home-Assistant-Aktion `fritzbox_network_insight.repeater_client_raw_diagnostics` für die vollständigen bereits erfassten Felder **eines** Clients nach MAC-Adresse.
+- Praxistest 11.11.2026: Repeater-Küche meldete drei WLANConfiguration-Dienste, fünf Clients und drei XML-Listen; Kamera-Tor (`4C:6B:B8:9E:7D:51`) lieferte `X_AVM-DE_Speed=260`, Signalstärke 59, Kanal 104, Kanalbreite 80 MHz. **Kein separates SpeedRX-Feld** in den erfassten Antworten; daraus keine zweite Übertragungsrichtung ableiten.
+- GitHub Actions für den letzten WLAN-Branch-Head vor dem Merge: `success`. Der Merge nach `develop` wurde von GitHub bestätigt; ein neuer HA-Praxistest **des gemergten develop-Standes** ist damit noch nicht belegt.
+
+## Offene Entwicklung
+
+- **PR #40:** [Device Connection Details](https://github.com/arator68/fritzbox-network-insight/pull/40), Draft, Branch `feature/device-connection-details`, Basis `develop` zum Zeitpunkt der Branch-Erstellung. Ergänzt `connection_details` an bestehenden Statussensoren: LAN/WLAN-Typ, nachgewiesener LLDP-Nachbar, Port und separat FDB-Erreichbarkeit. Keine neuen Entitäten. CI des ursprünglichen PR-Heads war erfolgreich; **Praxistest in Home Assistant ausstehend**. Vor Merge nach dem WLAN-Merge auf Basisstand/Konflikte prüfen.
+- Danach allgemeine Geräteinformationen vervollständigen (Hersteller, Modell, Verbindungspartner), dann eigenes Feature für **LAN-Messwerte** (ausgehandelte Portgeschwindigkeit, RX-/TX-Zähler, Durchsatz, Fehler, Duplex soweit verfügbar). Switch-Portwerte nicht unbewiesen einzelnen Endgeräten zuschreiben.
+- **Keine Freigabe nach `main`** und kein Release ohne gesonderte Prüfung.
+
+## Arbeitsweise
+
+- Features getrennt in `feature/*`, PRs gegen `develop`; `main` bleibt Release-Zweig.
+- Bestehende Entity-IDs und Anzeigenamen nicht ohne ausdrücklich gewünschte Migration ändern.
+- Änderungen bevorzugt vollständig und reproduzierbar, keine manuellen Änderungen an Home Assistants `.storage`.
+- WLAN-TX/RX-Untersuchung vorerst beendet; jetzt Fokus auf allgemeine Geräteattribute und anschließend LAN-Messwerte.
+
+---
+
+# Historische Entwicklungsnotizen – FRITZ!Box Network Insight
 
 **Stand:** 2026-11-09 (fortlaufend aktualisiert; ältere Abschnitte als historische Momentaufnahme erhalten)  
 **Status:** Laufende Entwicklung; PR #38 nach `develop` übernommen, keine Freigabe für `main` oder ein Release  
