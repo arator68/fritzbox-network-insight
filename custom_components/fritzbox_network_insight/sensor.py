@@ -383,9 +383,7 @@ class FritzBoxHostStatusSensor(
         attributes["connection_details"] = connection_details(
             self._mac,
             host,
-            self.coordinator.data or {},
-            self.coordinator.topology_observations,
-            self.coordinator.fdb_observations,
+            self.coordinator.get_combined_topology_snapshot(),
         )
         # Expose switch-port measurements only for endpoints explicitly
         # identified as Ethernet. FDB reachability alone cannot establish
