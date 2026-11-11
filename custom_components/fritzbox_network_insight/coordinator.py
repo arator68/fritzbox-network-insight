@@ -159,6 +159,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                 raise ValueError("Too many manually confirmed links")
             await self.manual_topology_store.async_save(new_links)
             self.manual_links = new_links
+        self.async_update_listeners()
         return list(self.manual_links)
 
     async def async_delete_manual_link(
