@@ -1,4 +1,4 @@
-"""Conservative, source-labelled connection metadata for device status attributes."""
+"""Per-device connection view derived from the existing combined topology."""
 from __future__ import annotations
 
 from typing import Any, Mapping
@@ -9,11 +9,9 @@ from .device import normalize_mac
 def connection_details(
     mac: str,
     host: Mapping[str, Any],
-    hosts: Mapping[str, Mapping[str, Any]],
-    topology: Mapping[str, list[dict[str, Any]]],
-    fdb: Mapping[str, list[dict[str, Any]]],
+    snapshot: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Distinguish a verified LLDP neighbor from FDB reachability."""
+    """Project combined topology evidence onto one MAC without rescanning."""
     interface = str(host.get("interface_type") or "").strip().lower()
     kind = (
         "wlan" if interface in {"802.11", "wlan", "wifi", "wi-fi"}
@@ -32,38 +30,43 @@ def connection_details(
     target = normalize_mac(mac)
     if target is None:
         return result
-    # LLDP is an observed adjacency, not proof that the link is still live.
-    # For each endpoint, expose its own local port rather than the peer's port.
-    matches: dict[tuple[str, str | None], dict[str, Any]] = {}
-    for source_mac, links in topology.items():
-        source = normalize_mac(source_mac)
-        for link in links:
-            if not isinstance(link, Mapping) or link.get("match_status") != "matched":
-                continue
-            remote = normalize_mac(link.get("target_mac"))
-            if source is None or remote is None or source == remote:
-                continue
-            if target == source:
-                peer = remote
-                local_port = str(link.get("source_port_id") or "") or None
-                peer_port = str(link.get("target_port_id") or "") or None
-            elif target == remote:
-                peer = source
-                local_port = str(link.get("target_port_id") or "") or None
-                peer_port = str(link.get("source_port_id") or "") or None
-            else:
-                continue
-            peer_host = hosts.get(peer, {})
-            matches[(peer, local_port)] = {
-                "connected_to": peer_host.get("name") or peer,
-                "connected_to_mac": peer,
-                "connected_to_port": local_port,
-                "peer_port": peer_port,
-                "evidence": "lldp_last_observed",
-                "observed_at": link.get("observed_at"),
-            }
+
+    names = {
+        normalized: node.get("name") or normalized
+        for node in snapshot.get("nodes", [])
+        if isinstance(node, Mapping)
+        if (normalized := normalize_mac(node.get("mac"))) is not None
+    }
+    direct: dict[tuple[str, str | None], dict[str, Any]] = {}
+    for link in snapshot.get("direct_links", []):
+        if not isinstance(link, Mapping) or link.get("connection") != "direct_confirmed":
+            continue
+        source = normalize_mac(link.get("source_mac"))
+        remote = normalize_mac(link.get("target_mac"))
+        if source is None or remote is None or source == remote:
+            continue
+        if target == source:
+            peer = remote
+            local_port = link.get("source_port_id")
+            peer_port = link.get("target_port_id")
+        elif target == remote:
+            peer = source
+            local_port = link.get("target_port_id")
+            peer_port = link.get("source_port_id")
+        else:
+            continue
+        local_port = str(local_port) if local_port else None
+        direct[(peer, local_port)] = {
+            "connected_to": names.get(peer, peer),
+            "connected_to_mac": peer,
+            "connected_to_port": local_port,
+            "peer_port": str(peer_port) if peer_port else None,
+            "evidence": "lldp_last_observed",
+            "observed_at": link.get("observed_at"),
+        }
+
     connections = sorted(
-        matches.values(),
+        direct.values(),
         key=lambda item: (item["connected_to_mac"], item["connected_to_port"] or ""),
     )
     result["connections"] = connections
@@ -77,20 +80,51 @@ def connection_details(
             "connected_to_mac": only["connected_to_mac"],
             "connected_to_port": only["connected_to_port"],
         })
-    # FDB is reachability evidence, never proof of direct cabling.
+
+    # FDB only establishes reachability via a switch port, not direct wiring.
     reachable = []
-    for switch_mac, observations in fdb.items():
-        for observation in observations:
-            if (
-                isinstance(observation, Mapping)
-                and normalize_mac(observation.get("target_mac")) == target
-                and observation.get("connection") == "reachable_via_port"
-            ):
-                reachable.append({
-                    "switch_mac": normalize_mac(switch_mac),
-                    "interface_name": observation.get("interface_name"),
-                    "evidence": "fdb_reachable_via_port",
-                })
+    for link in snapshot.get("reachable_via_port", []):
+        if not isinstance(link, Mapping) or link.get("connection") != "reachable_via_port":
+            continue
+        if normalize_mac(link.get("target_mac")) != target:
+            continue
+        switch_mac = normalize_mac(link.get("source_mac"))
+        if switch_mac is None:
+            continue
+        reachable.append({
+            "switch_mac": switch_mac,
+            "interface_name": link.get("interface_name"),
+            "evidence": "fdb_reachable_via_port",
+        })
     if reachable:
         result["reachable_via_switch_ports"] = reachable
+
+    # AVM reports its own topology; preserve the distinction from LLDP.
+    mesh_links = []
+    for link in snapshot.get("mesh_links", []):
+        if not isinstance(link, Mapping):
+            continue
+        source = normalize_mac(link.get("source_mac"))
+        remote = normalize_mac(link.get("target_mac"))
+        if target == source and remote is not None:
+            peer = remote
+            local_port = link.get("source_interface")
+            peer_port = link.get("target_interface")
+        elif target == remote and source is not None:
+            peer = source
+            local_port = link.get("target_interface")
+            peer_port = link.get("source_interface")
+        else:
+            continue
+        mesh_links.append({
+            "connected_to": names.get(peer, peer),
+            "connected_to_mac": peer,
+            "connected_to_port": local_port or None,
+            "peer_port": peer_port or None,
+            "link_type": link.get("link_type"),
+            "link_state": link.get("link_state"),
+            "evidence": "avm_mesh",
+        })
+    if mesh_links:
+        result["mesh_reported_connections"] = mesh_links
     return result
