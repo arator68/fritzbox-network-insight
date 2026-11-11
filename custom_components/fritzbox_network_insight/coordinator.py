@@ -178,6 +178,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             ]
             await self.manual_topology_store.async_save(new_links)
             self.manual_links = new_links
+        self.async_update_listeners()
         return list(self.manual_links)
 
     def get_fdb_snapshot(self) -> dict[str, Any]:
