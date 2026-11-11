@@ -98,11 +98,11 @@ def resolve_device_connections(graph: Mapping[str, Any]) -> list[dict[str, Any]]
             "wlan_parent_connection": "unverified",
         })
 
-    # Only LLDP and explicit user confirmation can assert a direct cable.
+    # Only LLDP can assert a direct cable.
     # Never mistake AVM logical LAN evidence for a physical link.
     for link in graph.get("links", []):
         if link.get("medium") != "lan" or link.get("evidence") not in (
-            "lldp", "user_confirmed"
+            "lldp", "lldp"
         ):
             continue
         source = link.get("source_mac")
@@ -116,7 +116,7 @@ def resolve_device_connections(graph: Mapping[str, Any]) -> list[dict[str, Any]]
             entry.update({
                 "connection_type": "disputed_lan",
                 "parent_mac": None,
-                "evidence": "user_confirmed",
+                "evidence": "lldp",
                 "physical_link_confirmed": False,
                 "status": "needs_review",
             })
