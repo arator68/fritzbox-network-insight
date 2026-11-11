@@ -14,6 +14,7 @@ from .coordinator import FritzBoxDataUpdateCoordinator
 from .device_diagnostics import device_details_snapshot
 from .fritzbox_client import FritzBoxClient
 from .mac_vendor import preload_mac_vendor_registry
+from .repeater_raw_diagnostics import repeater_client_raw_snapshot
 from .topology.view_model import build_topology_view
 
 _LOGGER = logging.getLogger(__name__)
@@ -76,6 +77,36 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             schema=vol.Schema({
                 vol.Optional("entry_id"): str,
                 vol.Optional("mac"): str,
+            }),
+            supports_response=SupportsResponse.ONLY,
+        )
+
+    if not hass.services.has_service(DOMAIN, "repeater_client_raw_diagnostics"):
+        async def async_repeater_client_raw_diagnostics(call):
+            """Return all captured TR-064 fields for one MAC, without polling."""
+            domain_data = hass.data.get(DOMAIN, {})
+            requested = call.data.get("entry_id")
+            if requested:
+                selected = domain_data.get(requested)
+            elif len(domain_data) == 1:
+                selected = next(iter(domain_data.values()))
+            else:
+                selected = None
+            if selected is None:
+                return {"error": "Specify a valid entry_id (required with multiple entries)"}
+            return repeater_client_raw_snapshot(
+                selected.repeater_raw_store,
+                call.data["mac"],
+                call.data.get("host"),
+            )
+
+        hass.services.async_register(
+            DOMAIN, "repeater_client_raw_diagnostics",
+            async_repeater_client_raw_diagnostics,
+            schema=vol.Schema({
+                vol.Optional("entry_id"): str,
+                vol.Required("mac"): str,
+                vol.Optional("host"): str,
             }),
             supports_response=SupportsResponse.ONLY,
         )
@@ -242,6 +273,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if not domain_data:
                 hass.data.pop(DOMAIN, None)
                 hass.services.async_remove(DOMAIN, "topology_diagnostics")
+                hass.services.async_remove(DOMAIN, "repeater_client_raw_diagnostics")
                 hass.services.async_remove(DOMAIN, "topology_view")
                 hass.services.async_remove(DOMAIN, "confirm_topology_link")
                 hass.services.async_remove(DOMAIN, "remove_topology_link")
