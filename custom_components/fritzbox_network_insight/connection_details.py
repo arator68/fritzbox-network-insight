@@ -26,30 +26,56 @@ def connection_details(
         "connected_to_mac": None,
         "connected_to_port": None,
         "connection_evidence": None,
+        "connection_count": 0,
+        "connections": [],
     }
     target = normalize_mac(mac)
     if target is None:
         return result
-    matches: list[tuple[str, str | None]] = []
+    # LLDP is an observed adjacency, not proof that the link is still live.
+    # For each endpoint, expose its own local port rather than the peer's port.
+    matches: dict[tuple[str, str | None], dict[str, Any]] = {}
     for source_mac, links in topology.items():
         source = normalize_mac(source_mac)
         for link in links:
             if not isinstance(link, Mapping) or link.get("match_status") != "matched":
                 continue
             remote = normalize_mac(link.get("target_mac"))
-            if target == remote and source is not None:
-                matches.append((source, str(link.get("source_port_id") or "") or None))
-            elif target == source and remote is not None:
-                matches.append((remote, str(link.get("target_port_id") or "") or None))
-    distinct = set(matches)
-    if len(distinct) == 1:
-        peer, port = next(iter(distinct))
-        peer_host = hosts.get(peer, {})
+            if source is None or remote is None or source == remote:
+                continue
+            if target == source:
+                peer = remote
+                local_port = str(link.get("source_port_id") or "") or None
+                peer_port = str(link.get("target_port_id") or "") or None
+            elif target == remote:
+                peer = source
+                local_port = str(link.get("target_port_id") or "") or None
+                peer_port = str(link.get("source_port_id") or "") or None
+            else:
+                continue
+            peer_host = hosts.get(peer, {})
+            matches[(peer, local_port)] = {
+                "connected_to": peer_host.get("name") or peer,
+                "connected_to_mac": peer,
+                "connected_to_port": local_port,
+                "peer_port": peer_port,
+                "evidence": "lldp_last_observed",
+                "observed_at": link.get("observed_at"),
+            }
+    connections = sorted(
+        matches.values(),
+        key=lambda item: (item["connected_to_mac"], item["connected_to_port"] or ""),
+    )
+    result["connections"] = connections
+    result["connection_count"] = len(connections)
+    if connections:
+        result["connection_evidence"] = "lldp_last_observed"
+    if len(connections) == 1:
+        only = connections[0]
         result.update({
-            "connected_to": peer_host.get("name") or peer,
-            "connected_to_mac": peer,
-            "connected_to_port": port,
-            "connection_evidence": "lldp_last_observed",
+            "connected_to": only["connected_to"],
+            "connected_to_mac": only["connected_to_mac"],
+            "connected_to_port": only["connected_to_port"],
         })
     # FDB is reachability evidence, never proof of direct cabling.
     reachable = []
