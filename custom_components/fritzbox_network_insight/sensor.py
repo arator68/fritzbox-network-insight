@@ -20,6 +20,7 @@ from .entity_id_migration import (
 from .discovery_result import ManualDiscoveryResultSensor
 from .wlan_device_attributes import wlan_details_attribute
 from .connection_details import connection_details
+from .device_connection_sensors import CONNECTION_FIELDS, FritzBoxDeviceConnectionSensor
 from .wlan_metric_sensors import WLAN_METRICS, metric_observation
 from .wlan_connection_metadata import connection_metadata
 
@@ -37,6 +38,17 @@ async def async_setup_entry(
     """Create the overview sensor and one status sensor per discovered MAC."""
     coordinator: FritzBoxDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     known_macs: set[str] = set()
+    registered_connection_sensors: set[tuple[str, str]] = set()
+
+    def _connection_entities(mac: str) -> list[SensorEntity]:
+        result: list[SensorEntity] = []
+        for field in CONNECTION_FIELDS:
+            identity = (mac, field)
+            if identity not in registered_connection_sensors:
+                registered_connection_sensors.add(identity)
+                result.append(FritzBoxDeviceConnectionSensor(coordinator, mac, field))
+        return result
+
     wlan_macs: set[str] = set()
     registered_wlan_metrics: set[tuple[str, str]] = set()
     registered_wlan_metadata: set[tuple[str, str]] = set()
@@ -134,6 +146,7 @@ async def async_setup_entry(
     ]
     for mac in sorted((coordinator.data or {}).keys()):
         entities.append(FritzBoxHostStatusSensor(coordinator, entry, mac))
+        entities.extend(_connection_entities(mac))
         entities.append(ManualDiscoveryResultSensor(coordinator, entry, mac))
         if _is_wlan((coordinator.data or {}).get(mac)):
             entities.extend(_wlan_entities(mac))
@@ -172,6 +185,7 @@ async def async_setup_entry(
                 )
                 known_macs.add(mac)
                 new_entities.append(FritzBoxHostStatusSensor(coordinator, entry, mac))
+                new_entities.extend(_connection_entities(mac))
                 new_entities.append(ManualDiscoveryResultSensor(coordinator, entry, mac))
             if mac not in wlan_macs and _is_wlan((coordinator.data or {}).get(mac)):
                 wlan_macs.add(mac)
