@@ -19,6 +19,7 @@ from .entity_id_migration import (
 )
 from .discovery_result import ManualDiscoveryResultSensor
 from .wlan_device_attributes import wlan_details_attribute
+from .connection_details import connection_details
 from .wlan_metric_sensors import WLAN_METRICS, metric_observation
 from .wlan_connection_metadata import connection_metadata
 
@@ -455,6 +456,11 @@ class FritzBoxHostStatusSensor(
                         self.coordinator.repeater_raw_store.summary(configured_host)
                     )
                     break
+        attributes["connection_details"] = connection_details(
+            self._mac,
+            host,
+            self.coordinator.get_combined_topology_snapshot(),
+        )
         # Expose switch-port measurements only for endpoints explicitly
         # identified as Ethernet. FDB reachability alone cannot establish
         # whether a device uses LAN or WLAN.
