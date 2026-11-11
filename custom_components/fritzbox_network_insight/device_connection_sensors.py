@@ -87,7 +87,7 @@ class FritzBoxDeviceConnectionSensor(
                 and str(port.get("if_index")) != str(confirmed_bridge_port)):
             return None, {}
         interface_name = port.get("interface_name")
-        match = re.search(r"(?:/|\\b)(\\d+)$", str(interface_name or ""))
+        match = re.search(r"(?:/|\b)(\d+)$", str(interface_name or ""))
         friendly_port = match.group(1) if match else interface_name
         attrs = {
             "switch_mac": peer_mac,
