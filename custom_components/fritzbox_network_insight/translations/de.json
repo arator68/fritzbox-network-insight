@@ -95,6 +95,21 @@
       },
       "wlan_connection_peer": {
         "name": "Direkt verbunden mit"
+      },
+      "connection_type": {
+        "name": "Verbindungstyp"
+      },
+      "connection_peer": {
+        "name": "Verbunden mit"
+      },
+      "connection_switch_port": {
+        "name": "Switch-Port"
+      },
+      "connection_port_speed": {
+        "name": "Switch-Portgeschwindigkeit"
+      },
+      "connection_evidence": {
+        "name": "Verbindungsnachweis"
       }
     }
   },
