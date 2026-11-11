@@ -4,21 +4,19 @@ A Home Assistant custom integration for discovering devices reported by a FRITZ!
 
 ## Current development status
 
-The `develop` branch contains an early, manually installable development version. It is **not a stable release**.
+The `develop` branch is a **development build**, not a stable release. The integration currently includes:
 
-Implemented in the current development line:
+- TR-064 device discovery, MAC-based device identity, device status and metadata (including DNS names, manufacturer/OUI and device classification).
+- WLAN metrics, AVM Mesh observations and repeater TR-064 WLAN data collection. Repeater raw responses are retained **in memory only** as the latest successful snapshot; no raw-data history or Home Assistant `.storage` persistence.
+- Targeted Home Assistant action `fritzbox_network_insight.repeater_client_raw_diagnostics` to inspect captured fields for a selected MAC address.
+- SNMP/LLDP/FDB-based switch observations and port telemetry. FDB reachability must **not** be interpreted as a verified direct cable connection.
+- German/English translations and existing entity-name/ID preservation.
 
-- Configure one FRITZ!Box through the Home Assistant UI.
-- Validate credentials by making a live TR-064 host-list request.
-- Read the FRITZ!Box host list through the TR-064 Hosts service.
-- Normalize MAC addresses and use them as stable device identities.
-- Poll the host list every 60 seconds.
-- Create one overview sensor with the number of hosts in the latest scan.
-- Create one status sensor per discovered MAC address.
-- Expose available host metadata (name, IP address, active state and interface type) as sensor attributes.
-- Log successful scan counts at INFO level and individual device details at DEBUG level.
+**Merged:** PR #39 (WLAN metadata and repeater raw diagnostics), 11 November 2026.
 
-The integration currently reports the hosts returned by the FRITZ!Box. It does not yet determine physical switch-port topology, prove LLDP links, or retain historical last-seen information across restarts. Those capabilities require later development phases and additional data sources.
+**In progress:** [PR #40 – Device Connection Details](https://github.com/arator68/fritzbox-network-insight/pull/40), a separate draft feature awaiting Home Assistant validation. LAN port metrics and throughput measurements are planned for a subsequent feature.
+
+For verified observations, limitations, next steps and historical notes, see [Development Status](docs/DEVELOPMENT_STATUS.md).
 
 ## Installation for development
 
