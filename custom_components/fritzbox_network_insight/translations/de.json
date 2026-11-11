@@ -86,7 +86,81 @@
       },
       "wlan_signal_strength": {
         "name": "WLAN-Signalstärke"
+      },
+      "wlan_connection_role": {
+        "name": "Geräterolle"
+      },
+      "wlan_connection_band": {
+        "name": "Frequenzband"
+      },
+      "wlan_connection_peer": {
+        "name": "Direkt verbunden mit"
       }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Einstellungen verwalten",
+        "data": {
+          "section": "Bereich"
+        }
+      },
+      "fritzbox": {
+        "title": "FRITZ!Box-Verbindung",
+        "description": "Die Zugangsdaten dieser FRITZ!Box werden über den Integrationseintrag verwaltet.",
+        "data": {
+          "back": "Zurück"
+        }
+      },
+      "repeaters": {
+        "title": "Repeater verwalten",
+        "data": {
+          "action": "Aktion auswählen"
+        }
+      },
+      "repeater_edit": {
+        "title": "Repeater hinzufügen oder bearbeiten",
+        "description": "Das Passwort beim Bearbeiten leer lassen, um das gespeicherte Passwort beizubehalten. WLAN-Geräte werden anhand ihrer MAC-Adressen automatisch zugeordnet.",
+        "data": {
+          "host": "Repeater-Adresse",
+          "username": "Benutzername",
+          "password": "Repeater-Kennwort",
+          "enabled": "Aktiviert"
+        }
+      },
+      "snmp": {
+        "title": "SNMP-Gerät einrichten",
+        "data": {
+          "mac": "Gerät",
+          "snmp_username": "SNMP-Benutzername",
+          "auth_password": "Authentifizierungspasswort",
+          "priv_password": "Verschlüsselungspasswort"
+        }
+      },
+      "repeater_test": {
+        "title": "Repeater-Verbindung testen",
+        "description": "Verbindung zu {host} erfolgreich. {count} WLAN-Geräte in der Geräteliste gefunden.",
+        "data": {
+          "back": "Zurück"
+        }
+      },
+      "repeater_discovery": {
+        "title": "Erkannte Repeater einrichten",
+        "description": "Wähle einen erkannten Repeater aus. Die Zugangsdaten werden erst nach deiner Bestätigung gespeichert.",
+        "data": {
+          "host": "Erkannter Repeater",
+          "back": "Zurück"
+        }
+      }
+    },
+    "error": {
+      "required": "Bitte alle erforderlichen Felder ausfüllen.",
+      "cannot_connect": "Verbindung fehlgeschlagen. Repeater-Adresse und Zugangsdaten prüfen.",
+      "no_repeaters_found": "Keine weiteren Repeater erkannt. Bitte die Mesh-Erkennung prüfen oder den Repeater manuell hinzufügen."
+    },
+    "abort": {
+      "no_devices": "Keine Geräte verfügbar."
     }
   }
 }

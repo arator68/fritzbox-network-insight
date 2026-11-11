@@ -25,7 +25,7 @@ def metric_observation(rows: list[dict[str, Any]], metric: str) -> dict[str, Any
     candidates = {
         "channel": ((field, scope), ("mesh_peer_interface_channel", None), ("mesh_wifi_channel", None)),
         "channel_width": ((field, scope), ("mesh_peer_interface_channel_width_raw", None)),
-        "signal_strength": ((field, scope), ("mesh_rx_rcpi_raw", None)),
+        "signal_strength": (("mesh_rx_rcpi_raw", None), (field, scope)),
     }.get(metric, ((field, scope),))
     for candidate_field, candidate_scope in candidates:
         for row in rows:

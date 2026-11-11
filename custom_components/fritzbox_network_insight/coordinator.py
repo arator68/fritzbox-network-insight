@@ -22,6 +22,8 @@ from .mac_vendor import lookup_mac_vendor
 from .mesh import fetch_mesh, parse_mesh
 from .mesh_wlan_details import extract_mesh_wlan_details
 from .wlan_details import fetch_wlan_devices
+from .repeater_wlan_diagnostics import fetch_repeater_wlan_diagnostics, fetch_repeater_clients
+from .repeater_raw_store import RepeaterRawStore, fetch_repeater_raw
 from .device_details import (
     DeviceDetails, details_from_host, add_snmp_details,
     add_mesh_link_details, add_lldp_link_details, add_wlan_details,
@@ -82,6 +84,13 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self._wlan_observations: dict[str, dict[str, dict[str, Any]]] = {}
         self._wlan_observed_at: str | None = None
         self._wlan_last_attempt: float = 0.0
+        self._repeater_diag_last_attempt: float = 0.0
+        self._repeater_clients_last_attempt: float = 0.0
+        self._repeater_raw_last_attempt: float = 0.0
+        self.repeater_raw_store = RepeaterRawStore()
+        self._repeater_diag_values: dict[str, int] = {}
+        self._repeater_client_values: dict[str, dict[str, dict[str, int]]] = {}
+        self._repeater_diag_observed_at: str | None = None
         self._snmp_last_attempt: float = 0.0
         self._snmp_scan_lock = asyncio.Lock()
         self._dns_cache: dict[str, tuple[float, str | None]] = {}
@@ -415,6 +424,52 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                 self._wlan_observed_at = datetime.now(timezone.utc).isoformat()
             except Exception:
                 _LOGGER.debug("Optional WLAN device list unavailable", exc_info=True)
+        # Explicitly opted-in repeater query: one target MAC, read-only,
+        # independent of Mesh graph and existing WLAN sensor selection.
+        repeater_config = self.entry.options.get("repeater_wlan_diagnostics", {})
+        if isinstance(repeater_config, dict) and all(
+            repeater_config.get(k) for k in ("host", "username", "password", "target_mac")
+        ):
+            now_diag = monotonic()
+            if not self._repeater_diag_last_attempt or now_diag - self._repeater_diag_last_attempt >= 300:
+                self._repeater_diag_last_attempt = now_diag
+                try:
+                    self._repeater_diag_values = await self.hass.async_add_executor_job(
+                        fetch_repeater_wlan_diagnostics,
+                        repeater_config["host"], repeater_config["username"],
+                        repeater_config["password"], repeater_config["target_mac"],
+                        self.client.timeout,
+                    )
+                    self._repeater_diag_observed_at = datetime.now(timezone.utc).isoformat()
+                except Exception:
+                    self._repeater_diag_values = {}
+                    _LOGGER.debug("Optional repeater WLAN diagnostics unavailable", exc_info=True)
+        else:
+            self._repeater_diag_values = {}
+        # One TR-064 collection feeds both raw inspection and derived WLAN fields.
+        repeater_configs = dict(self.entry.options.get("repeaters", {}))
+        if repeater_configs:
+            now_raw = monotonic()
+            if not self._repeater_raw_last_attempt or now_raw - self._repeater_raw_last_attempt >= 300:
+                self._repeater_raw_last_attempt = now_raw
+                for repeater_host, config in repeater_configs.items():
+                    if not isinstance(config, dict) or not config.get("enabled", True):
+                        continue
+                    if not all(config.get(k) for k in ("host", "username", "password")):
+                        continue
+                    try:
+                        snapshot = await self.hass.async_add_executor_job(
+                            fetch_repeater_raw, config["host"], config["username"],
+                            config["password"], self.client.timeout,
+                        )
+                        self.repeater_raw_store.update(repeater_host, snapshot)
+                    except Exception:
+                        _LOGGER.debug("Repeater raw snapshot unavailable for %s",
+                                      repeater_host, exc_info=True)
+                self._repeater_client_values = self.repeater_raw_store.client_values()
+                self._repeater_diag_observed_at = datetime.now(timezone.utc).isoformat()
+        else:
+            self._repeater_client_values = {}
         await self._async_refresh_snmp_topology(indexed)
         # Mesh refresh every 15 minutes; keep the last successful result.
         now_mesh = monotonic()
@@ -508,6 +563,16 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                 details, self._wlan_observations.get(mac),
                 observed_at=self._wlan_observed_at,
             )
+            if isinstance(repeater_config, dict) and mac == repeater_config.get("target_mac"):
+                for key, value in self._repeater_diag_values.items():
+                    details.add(key, value, source="tr064_repeater_diagnostics",
+                                observed_at=self._repeater_diag_observed_at)
+            for repeater_host, clients in self._repeater_client_values.items():
+                for key, value in clients.get(mac, {}).items():
+                    details.add(
+                        key, value, source=f"tr064_repeater:{repeater_host}",
+                        observed_at=self._repeater_diag_observed_at,
+                    )
             for radio in self._mesh_wlan_details.get(mac, []):
                 for key, value in radio.items():
                     details.add(

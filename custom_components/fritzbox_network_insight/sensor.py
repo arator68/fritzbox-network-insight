@@ -20,6 +20,7 @@ from .entity_id_migration import (
 from .discovery_result import ManualDiscoveryResultSensor
 from .wlan_device_attributes import wlan_details_attribute
 from .wlan_metric_sensors import WLAN_METRICS, metric_observation
+from .wlan_connection_metadata import connection_metadata
 
 VISIBLE_WLAN_METRICS = (
     "channel", "channel_width", "signal_strength",
@@ -37,6 +38,7 @@ async def async_setup_entry(
     known_macs: set[str] = set()
     wlan_macs: set[str] = set()
     registered_wlan_metrics: set[tuple[str, str]] = set()
+    registered_wlan_metadata: set[tuple[str, str]] = set()
     registry = er.async_get(hass)
     obsolete = ("mesh_channel", "mesh_peer_channel_width", "mesh_signal_rx_raw")
     for registered in list(er.async_entries_for_config_entry(registry, entry.entry_id)):
@@ -86,6 +88,20 @@ async def async_setup_entry(
                 result.append(FritzBoxWlanMetricSensor(coordinator, mac, key))
         return result
 
+    def _wlan_metadata_entities(mac: str) -> list[SensorEntity]:
+        host = (coordinator.data or {}).get(mac)
+        details = coordinator.device_details.get(mac)
+        observations = connection_metadata(
+            mac, host, details, coordinator.data or {}, coordinator.mesh_topology
+        )
+        result: list[SensorEntity] = []
+        for key in ("role", "band", "peer"):
+            identity = (mac, key)
+            if key in observations and identity not in registered_wlan_metadata:
+                registered_wlan_metadata.add(identity)
+                result.append(FritzBoxWlanConnectionSensor(coordinator, mac, key))
+        return result
+
     # Migrate registered legacy IDs before creating/adding entities.
     for mac, host in sorted((coordinator.data or {}).items()):
         compact_mac = mac.replace(":", "").lower()
@@ -120,6 +136,7 @@ async def async_setup_entry(
         entities.append(ManualDiscoveryResultSensor(coordinator, entry, mac))
         if _is_wlan((coordinator.data or {}).get(mac)):
             entities.extend(_wlan_entities(mac))
+            entities.extend(_wlan_metadata_entities(mac))
             wlan_macs.add(mac)
         known_macs.add(mac)
     async_add_entities(entities)
@@ -158,8 +175,10 @@ async def async_setup_entry(
             if mac not in wlan_macs and _is_wlan((coordinator.data or {}).get(mac)):
                 wlan_macs.add(mac)
                 new_entities.extend(_wlan_entities(mac))
+                new_entities.extend(_wlan_metadata_entities(mac))
         for mac in sorted(wlan_macs):
             new_entities.extend(_wlan_entities(mac))
+            new_entities.extend(_wlan_metadata_entities(mac))
         if new_entities:
             async_add_entities(new_entities)
 
@@ -226,6 +245,51 @@ class FritzBoxWlanMetricSensor(
         if observation is None:
             return {}
         return {key: value for key, value in observation.items() if key != "value"}
+
+
+class FritzBoxWlanConnectionSensor(
+    CoordinatorEntity[FritzBoxDataUpdateCoordinator], SensorEntity
+):
+    """One observed WLAN connection property for a MAC-identified host."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:wifi"
+
+    def __init__(self, coordinator: FritzBoxDataUpdateCoordinator, mac: str, field: str) -> None:
+        super().__init__(coordinator)
+        self._mac = mac
+        self._field = field
+        compact = mac.replace(":", "").lower()
+        self._attr_unique_id = f"host_{compact}_wlan_connection_{field}"
+        self.entity_id = f"sensor.fritzbox_network_insight_{compact}_wlan_connection_{field}"
+        self._attr_translation_key = f"wlan_connection_{field}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, mac)}, connections={("mac", mac)},
+        )
+
+    @property
+    def _observation(self) -> dict[str, Any] | None:
+        return connection_metadata(
+            self._mac,
+            (self.coordinator.data or {}).get(self._mac),
+            self.coordinator.device_details.get(self._mac),
+            self.coordinator.data or {},
+            self.coordinator.mesh_topology,
+        ).get(self._field)
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._observation is not None
+
+    @property
+    def native_value(self) -> str | None:
+        observation = self._observation
+        return observation["value"] if observation else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        observation = self._observation
+        return {k: v for k, v in observation.items() if k != "value"} if observation else {}
 
 
 class FritzBoxDeviceCountSensor(
@@ -379,6 +443,18 @@ class FritzBoxHostStatusSensor(
             "interface_type": host["interface_type"],
             "seen_in_latest_scan": True,
         }
+        # Small repeater collection status; full raw responses stay in memory.
+        repeater_ip = host.get("ip_address")
+        repeater_configs = self.coordinator.entry.options.get("repeaters", {})
+        if isinstance(repeater_configs, dict):
+            for configured_host, config in repeater_configs.items():
+                if not isinstance(config, dict):
+                    continue
+                if config.get("host") == repeater_ip or configured_host == repeater_ip:
+                    attributes["repeater_raw_data"] = (
+                        self.coordinator.repeater_raw_store.summary(configured_host)
+                    )
+                    break
         # Expose switch-port measurements only for endpoints explicitly
         # identified as Ethernet. FDB reachability alone cannot establish
         # whether a device uses LAN or WLAN.
