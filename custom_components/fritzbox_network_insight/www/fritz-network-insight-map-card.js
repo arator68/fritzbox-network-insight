@@ -82,10 +82,13 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     if (!this.config) return;
     const esc = v => this._esc(v);
     const data = this._data;
-    // Only current FRITZ!Box hosts, never stale LLDP/FDB/Mesh-only identities.\n    const nodes = (data?.nodes || []).filter(n => n.known_host === true);\n    const currentIds = new Set(nodes.map(n => String(n.id || n.mac)));
-    const edges = (data?.edges || []).filter(e =>\n      currentIds.has(String(e.source)) && currentIds.has(String(e.target)) &&
-      (e.kind === "confirmed_lan" && e.physical_link_confirmed === true) ||
-      (e.kind === "mesh_wlan" && e.evidence === "avm_mesh")
+    // Only current FRITZ!Box hosts, never stale LLDP/FDB/Mesh-only identities.
+    const nodes = (data?.nodes || []).filter(n => n.known_host === true);
+    const currentIds = new Set(nodes.map(n => String(n.id || n.mac)));
+    const edges = (data?.edges || []).filter(e =>
+      currentIds.has(String(e.source)) && currentIds.has(String(e.target)) &&
+      ((e.kind === "confirmed_lan" && e.physical_link_confirmed === true) ||
+       (e.kind === "mesh_wlan" && e.evidence === "avm_mesh"))
     );
     const {positions, width, height, map} = this._layout(nodes);
     const kindLabel = { router: "Router", switch: "Switch", repeater: "Repeater", device: "Gerät" };
