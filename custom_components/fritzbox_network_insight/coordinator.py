@@ -247,7 +247,8 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
 
     async def async_record_manual_discovery(
         self, mac: str | None, *, status: str, requested: int, checked: int,
-        protocols: tuple[str, ...] = (), details: dict[str, str] | None = None
+        protocols: tuple[str, ...] = (), details: dict[str, str] | None = None,
+        publish: bool = True,
     ) -> None:
         """Publish a manual result and update verified MAC-based identification."""
         result_details = dict(details or {})
@@ -376,7 +377,11 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             add_lan_port_details(
                 self.device_details, self.discovery_results, self.fdb_observations
             )
-        self.async_update_listeners()
+        # During a periodic coordinator refresh, the host snapshot is still
+        # being assembled. Publishing here exposes mixed old/new evidence
+        # and can briefly clear otherwise valid port sensors.
+        if publish:
+            self.async_update_listeners()
         if fdb_changed:
             async with self._topology_save_lock:
                 try:
@@ -454,6 +459,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                     await self.async_record_manual_discovery(
                         mac, status="responded", requested=1, checked=1,
                         protocols=("snmp",), details=details,
+                        publish=False,
                     )
                 except Exception:
                     _LOGGER.warning("Automatic SNMP topology refresh failed for %s", mac)
