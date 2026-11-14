@@ -26,3 +26,7 @@ The card reads the **existing** read-only service `fritzbox_network_insight.topo
 ## Limitations / testing
 
 This is an **initial independent frontend implementation**, not a byte-for-byte port of the original 0.7.29 JS. The original styling inspired the LCARS/cyber themes; layout and interactions still need comparison against the uploaded reference. Browser integration and HA runtime tests are pending. Do not merge before a Home Assistant installation test.
+
+## Current-device filtering (PR #48 update)
+
+The existing read-only `topology_view` response now exposes the already-computed `known_host` flag from the internal graph. The card renders only `known_host: true` nodes and only links whose endpoints both occur in that current-host list. Saved LLDP/FDB-only identities are not shown as current devices. Component positions are grouped by reported device type; no graph traversal or physical topology inference runs in the frontend. The card does not remove Home Assistant device-registry entries or delete historical evidence.
