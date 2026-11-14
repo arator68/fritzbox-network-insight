@@ -11,6 +11,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .router_device import router_device_info
 from .coordinator import FritzBoxDataUpdateCoordinator
 from .discovery.manual import ManualDiscoveryRunner
 from .discovery.ssdp import SsdpDiscoveryAdapter
@@ -90,10 +91,7 @@ class DiscoverAllButton(
         super().__init__(coordinator)
         self._runner = runner
         self._attr_unique_id = f"{entry.entry_id}_manual_discovery_all"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=f"FRITZ!Box {entry.data.get('host', '')}",
-        )
+        self._attr_device_info = router_device_info(coordinator, entry)
 
     async def async_press(self) -> None:
         """Perform discovery only on explicit button press."""
