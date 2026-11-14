@@ -416,6 +416,20 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                     details = adapter.results.get(mac, {})
                     if details.get("fdb_status") != "ok" or details.get("fdb_truncated") != "false":
                         continue
+                    # An empty automatic walk must not erase previously verified
+                    # observations while Home Assistant is starting.
+                    try:
+                        fresh_fdb = json.loads(details.get("fdb_entries", "null"))
+                    except (TypeError, ValueError):
+                        continue
+                    if not isinstance(fresh_fdb, list):
+                        continue
+                    if not fresh_fdb and self.fdb_observations.get(mac):
+                        _LOGGER.warning(
+                            "Preserving %d restored FDB observations after an empty automatic SNMP walk",
+                            len(self.fdb_observations[mac]),
+                        )
+                        continue
                     await self.async_record_manual_discovery(
                         mac, status="responded", requested=1, checked=1,
                         protocols=("snmp",), details=details,
