@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from . import DiscoveryEvidence
-from .lldp import async_read_lldp
+from .lldp import async_read_lldp_with_status
 from .fdb import async_read_fdb
 from .port_telemetry import async_read_port_telemetry
 
@@ -88,7 +88,7 @@ class SnmpDiscoveryAdapter:
                 if not values:
                     return None
                 neighbors, fdb, ports = await asyncio.gather(
-                    async_read_lldp(engine, user, target),
+                    async_read_lldp_with_status(engine, user, target),
                     async_read_fdb(engine, user, target),
                     async_read_port_telemetry(engine, user, target),
                 )
@@ -98,8 +98,9 @@ class SnmpDiscoveryAdapter:
                 "sys_descr": values.get(SYS_DESCR, ""),
                 "sys_object_id": values.get(SYS_OBJECT_ID, ""),
                 "sys_name": values.get(SYS_NAME, ""),
-                "lldp_neighbor_count": str(len(neighbors)),
-                "lldp_neighbors": json.dumps(neighbors, ensure_ascii=False),
+                "lldp_status": neighbors["status"],
+                "lldp_neighbor_count": str(len(neighbors["neighbors"])),
+                "lldp_neighbors": json.dumps(neighbors["neighbors"], ensure_ascii=False),
                 "fdb_status": fdb["status"],
                 "fdb_source": fdb["source"],
                 "fdb_raw_port_count": str(fdb["raw_port_count"]),
