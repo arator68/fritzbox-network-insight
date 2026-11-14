@@ -1,12 +1,13 @@
 """Tests for safe central router device association."""
 import sys
 import types
+import importlib.util
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
 # Load the small device-info helper without requiring a running HA instance.
-from test_internal_graph import _load_module, PACKAGE
+from test_internal_graph import ROOT
 
 class RouterDeviceTests(unittest.TestCase):
     @classmethod
@@ -28,10 +29,26 @@ class RouterDeviceTests(unittest.TestCase):
             "homeassistant.helpers": helpers,
             "homeassistant.helpers.device_registry": registry,
         })
-        cls.module = _load_module(f"{PACKAGE}.router_device", "router_device.py")
+        package_name = "_router_device_test"
+        package = types.ModuleType(package_name)
+        package.__path__ = [str(ROOT / "custom_components" / "fritzbox_network_insight")]
+        sys.modules[package_name] = package
+        const = types.ModuleType(f"{package_name}.const")
+        const.DOMAIN = "fritzbox_network_insight"
+        sys.modules[f"{package_name}.const"] = const
+        cls._package_name = package_name
+        spec = importlib.util.spec_from_file_location(
+            f"{package_name}.router_device",
+            ROOT / "custom_components" / "fritzbox_network_insight" / "router_device.py",
+        )
+        cls.module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = cls.module
+        spec.loader.exec_module(cls.module)
 
     @classmethod
     def tearDownClass(cls):
+        for key in (f"{cls._package_name}.router_device", f"{cls._package_name}.const", cls._package_name):
+            sys.modules.pop(key, None)
         for key, value in cls._old.items():
             if value is None:
                 sys.modules.pop(key, None)
