@@ -52,7 +52,7 @@ class RouterLldpSensorTests(unittest.TestCase):
                 sys.modules.pop(key, None)
         sys.modules.update(cls.previous)
 
-    def reading(self, field, kind="unknown", evidence="lldp_last_observed", peer_type="switch", links=1):
+    def reading(self, field, kind="unknown", evidence="lldp_last_observed", peer_type="switch", links=1, telemetry=None):
         mac = "04:B4:FE:18:79:65"
         peer = "D4:D6:DF:0E:1B:54"
         link = {"connected_to_mac": peer, "connected_to": "SG3428",
@@ -61,8 +61,9 @@ class RouterLldpSensorTests(unittest.TestCase):
                     "resolved": {"connection_type": kind, "connections": [link] * links,
                                  "connected_to": "SG3428", "connected_to_mac": peer,
                                  "connection_evidence": evidence}}
+        switch_details = SimpleNamespace(values=lambda key: [SimpleNamespace(value=item) for item in (telemetry or [])] if key == "snmp_port_telemetry" else [])
         coordinator = SimpleNamespace(data={mac: {"interface_type": None}},
-                                      manual_links=[], device_details={},
+                                      manual_links=[], device_details={peer: switch_details},
                                       get_combined_topology_snapshot=lambda: snapshot)
         sensor = self.loaded.FritzBoxDeviceConnectionSensor(coordinator, mac, field)
         return sensor._reading
@@ -79,6 +80,17 @@ class RouterLldpSensorTests(unittest.TestCase):
 
     def test_lldp_does_not_invent_speed(self):
         self.assertIsNone(self.reading("port_speed")[0])
+
+    def test_exact_lldp_switch_port_speed(self):
+        value, attrs = self.reading("port_speed", telemetry=[{"interface_name": "gigabitEthernet 1/0/1", "reported_speed_mbps": 1000, "speed_source": "ifHighSpeed"}])
+        self.assertEqual(value, 1000)
+        self.assertEqual(attrs["speed_source"], "ifHighSpeed")
+
+    def test_no_speed_for_other_or_ambiguous_ports(self):
+        wrong = {"interface_name": "gigabitEthernet 1/0/2", "reported_speed_mbps": 1000}
+        self.assertIsNone(self.reading("port_speed", telemetry=[wrong])[0])
+        same = {"interface_name": "gigabitEthernet 1/0/1", "reported_speed_mbps": 1000}
+        self.assertIsNone(self.reading("port_speed", telemetry=[same, same])[0])
 
     def test_no_inference_from_unconfirmed_or_ambiguous_links(self):
         self.assertIsNone(self.reading("type", evidence="user_confirmed")[0])
