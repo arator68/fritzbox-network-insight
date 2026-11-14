@@ -60,23 +60,28 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     if (kind.includes("repeater") || role.includes("repeater")) return "repeater";
     return "device";
   }
-  _layout(nodes) {
-    // Presentation-only layout: no graph traversal or relationship inference.
-    // The integration alone decides which edges are present.
-    const map = new Map(nodes.map(n => [String(n.id || n.mac), n]));
-    const components = nodes.filter(n => this._kind(n) !== "device");
-    const groups = ["router", "switch", "repeater"];
-    const layers = groups.map(kind => components.filter(n => this._kind(n) === kind))
-      .filter(layer => layer.length);
+  _layout(nodes, links) {
+    // Only positions are computed here. Every line comes from an existing
+    // integration edge or a connection_peer sensor, never from proximity.
+    const map = new Map(nodes.map(n => [String(n.id || n.mac).toUpperCase(), n]));
     const positions = new Map();
-    const width = Math.max(680, ...layers.map(layer => layer.length * 240 + 40));
-    layers.forEach((layer, depth) => {
-      layer.sort((a,b) => String(a.name).localeCompare(String(b.name)));
-      layer.forEach((n,i) => positions.set(String(n.id || n.mac), {
-        x: width * (i + 1) / (layer.length + 1), y: 65 + depth * 160
-      }));
+    const components = nodes.filter(n => this._kind(n) !== "device");
+    const endpoints = nodes.filter(n => this._kind(n) === "device");
+    const sort = arr => arr.sort((x, y) => String(x.name || x.mac).localeCompare(String(y.name || y.mac)));
+    const ordered = [...sort(components), ...sort(endpoints)];
+    const columns = 6, cellW = 220, cellH = 112, top = 38;
+    ordered.forEach((n, index) => {
+      const id = String(n.id || n.mac).toUpperCase();
+      positions.set(id, {
+        x: 120 + (index % columns) * cellW,
+        y: top + Math.floor(index / columns) * cellH
+      });
     });
-    return { positions, width, height: Math.max(240, 160 * layers.length + 35), map };
+    return {
+      positions, map,
+      width: columns * cellW + 20,
+      height: Math.max(220, top + Math.ceil(ordered.length / columns) * cellH + 20)
+    };
   }
   _deviceConnection(node) {
     // The exact entity IDs and evidence are already produced by the integration.
@@ -99,19 +104,41 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     const data = this._data;
     // Only current FRITZ!Box hosts, never stale LLDP/FDB/Mesh-only identities.
     const nodes = (data?.nodes || []).filter(n => n.known_host === true);
-    const currentIds = new Set(nodes.map(n => String(n.id || n.mac)));
-    const edges = (data?.edges || []).filter(e =>
-      currentIds.has(String(e.source)) && currentIds.has(String(e.target)) &&
-      ((e.kind === "confirmed_lan" && e.physical_link_confirmed === true) ||
-       (e.kind === "mesh_wlan" && e.evidence === "avm_mesh"))
-    );
-    const {positions, width, height, map} = this._layout(nodes);
+    const currentIds = new Set(nodes.map(n => String(n.id || n.mac).toUpperCase()));
+    const byName = new Map(nodes.map(n => [String(n.name || "").toLowerCase(), String(n.id || n.mac).toUpperCase()]));
+    const links = [];
+    const seen = new Set();
+    const add = (source, target, kind, evidence, port = "") => {
+      source = String(source || "").toUpperCase();
+      target = String(target || "").toUpperCase();
+      if (!currentIds.has(source) || !currentIds.has(target) || source === target) return;
+      const key = [source, target].sort().join("|") + "|" + kind;
+      if (seen.has(key)) return;
+      seen.add(key);
+      links.push({ source, target, kind, evidence, port });
+    };
+    for (const edge of data?.edges || []) {
+      if (edge.kind === "confirmed_lan" && edge.physical_link_confirmed === true)
+        add(edge.source, edge.target, "lan", edge.evidence, edge.port);
+      else if (edge.kind === "mesh_wlan" && edge.evidence === "avm_mesh")
+        add(edge.source, edge.target, "wlan", edge.evidence, edge.port);
+    }
+    for (const node of nodes) {
+      const relation = this._deviceConnection(node);
+      if (!relation) continue;
+      const peer = String(relation.mac || "").toUpperCase() ||
+        byName.get(String(relation.name || "").toLowerCase());
+      add(peer, node.id || node.mac,
+        relation.confirmed ? "lan" : "reachability", relation.evidence);
+    }
+    const edges = links;
+    const {positions, width, height, map} = this._layout(nodes, links);
     const kindLabel = { router: "Router", switch: "Switch", repeater: "Repeater", device: "Gerät" };
     const kindIcon = { router: "◉", switch: "▦", repeater: "⌁", device: "●" };
     const design = ["lcars","cyber","modern-dark","modern-light"].includes(this.config.design)
       ? this.config.design : "lcars";
-    const selected = map.get(this._selected);
-    const details = selected ? edges.filter(e => e.source === this._selected || e.target === this._selected) : [];
+    const selected = map.get(String(this._selected || "").toUpperCase());
+    const details = selected ? edges.filter(e => e.source === String(this._selected).toUpperCase() || e.target === String(this._selected).toUpperCase()) : [];
     const selectedConnection = selected ? this._deviceConnection(selected) : null;
     const nodeButtons = [...positions.entries()].map(([id,p]) => {
       const n = map.get(id);
@@ -125,10 +152,10 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     }).join("");
     const lines = edges.filter(e => positions.has(e.source) && positions.has(e.target)).map(e => {
       const a = positions.get(e.source), b = positions.get(e.target);
-      const dashed = e.kind === "mesh_wlan";
-      return `<path d="M ${a.x} ${a.y+72} C ${a.x} ${(a.y+b.y)/2+45}, ${b.x} ${(a.y+b.y)/2+45}, ${b.x} ${b.y}" class="${dashed?"wlan":"lan"}"><title>${esc(e.evidence)}${e.port ? " · "+esc(e.port):""}</title></path>`;
+      const dashed = e.kind !== "lan";
+      return `<path d="M ${a.x} ${a.y+72} C ${a.x} ${(a.y+b.y)/2+45}, ${b.x} ${(a.y+b.y)/2+45}, ${b.x} ${b.y}" class="${e.kind === "reachability" ? "reachability" : dashed ? "wlan" : "lan"}"><title>${esc(e.evidence)}${e.port ? " · "+esc(e.port):""}</title></path>`;
     }).join("");
-    const endDevices = nodes.filter(n => !positions.has(String(n.id || n.mac)));
+    const endDevices = nodes.filter(n => this._kind(n) === "device");
     const linkedDevices = endDevices.filter(n => this._deviceConnection(n) ||
       edges.some(e => e.source === (n.id || n.mac) || e.target === (n.id || n.mac)));
     const unassigned = endDevices.filter(n => !linkedDevices.includes(n));
@@ -145,7 +172,7 @@ class FritzNetworkInsightMapCard extends HTMLElement {
       <ha-card class="fnm-card ${design}">
         <div class="fnm-wrap">
           <header class="fnm-toolbar"><strong>NETZWERKÜBERSICHT</strong>
-            <span>${nodes.length} Geräte · ${edges.length} bestätigte Verbindungen</span>
+            <span>${nodes.length} Geräte · ${edges.length} angezeigte Zuordnungen</span>
             <button class="fnm-refresh" title="Aktualisieren">↻</button>
           </header>
           ${status}
@@ -156,10 +183,10 @@ class FritzNetworkInsightMapCard extends HTMLElement {
               ${nodeButtons}
             </div>
           </div>
-          <div class="fnm-legend"><span>━ LLDP (direkt)</span><span>┄ Mesh-WLAN</span><span>Keine Verbindungen werden in der Karte berechnet</span></div>
+          <div class="fnm-legend"><span>━ Bestätigtes LAN</span><span>┄ Mesh-WLAN</span><span>┄ FDB: Erreichbarkeit, kein Kabelnachweis</span></div>
           ${selected ? `<section class="fnm-detail"><button class="fnm-close">×</button><strong>${esc(selected.name || selected.mac)}</strong>
              <div>${esc(selected.mac)} · ${esc(selected.ip_address || "")}</div>
-             <div>${details.map(e => `${esc(map.get(e.source === this._selected ? e.target : e.source)?.name || (e.source === this._selected ? e.target : e.source))} · ${esc(e.evidence)}${e.port ? " · "+esc(e.port) : ""}`).join("<hr>") || (selectedConnection ? `${esc(selectedConnection.confirmed ? "Direkt verbunden mit" : "Erreichbar über")} ${esc(selectedConnection.name)} (${esc(selectedConnection.evidence)})` : "Keine Zuordnung vorhanden")}</div>
+             <div>${details.map(e => `${esc(map.get(e.source === String(this._selected).toUpperCase() ? e.target : e.source)?.name || (e.source === this._selected ? e.target : e.source))} · ${esc(e.evidence)}${e.port ? " · "+esc(e.port) : ""}`).join("<hr>") || (selectedConnection ? `${esc(selectedConnection.confirmed ? "Direkt verbunden mit" : "Erreichbar über")} ${esc(selectedConnection.name)} (${esc(selectedConnection.evidence)})` : "Keine Zuordnung vorhanden")}</div>
            </section>` : ""}
           <details class="fnm-devices"><summary>Endgeräte mit vorhandener Zuordnung (${linkedDevices.length})</summary><div class="fnm-grid">${deviceItems(linkedDevices)}</div></details>
           <details class="fnm-devices"><summary>Ohne vorhandene Zuordnung (${unassigned.length})</summary><div class="fnm-grid">${deviceItems(unassigned)}</div></details>
@@ -180,7 +207,7 @@ class FritzNetworkInsightMapCard extends HTMLElement {
         .fnm-graph{position:relative;margin:auto;min-width:100%}
         .fnm-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
         .fnm-lines path{fill:none;stroke:var(--line);stroke-width:2.5;opacity:.85}
-        .fnm-lines .wlan{stroke-dasharray:8 7;stroke:var(--repeater)}
+        .fnm-lines .wlan{stroke-dasharray:8 7;stroke:var(--repeater)}\n        .fnm-lines .reachability{stroke-dasharray:3 7;stroke:#e6a04b;opacity:.55}
         .fnm-node{position:absolute;display:flex;align-items:center;gap:8px;width:190px;min-height:73px;box-sizing:border-box;padding:10px;border:1px solid var(--line);border-top:4px solid var(--switch);border-radius:10px;background:var(--tile);color:var(--fg);cursor:pointer;text-align:left}
         .fnm-node.router{border-top-color:var(--router)}.fnm-node.repeater{border-top-color:var(--repeater)}
         .fnm-node:hover,.fnm-device:hover{filter:brightness(1.2)}
