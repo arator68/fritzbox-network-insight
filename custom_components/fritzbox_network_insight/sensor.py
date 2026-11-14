@@ -42,7 +42,12 @@ async def async_setup_entry(
 
     def _connection_entities(mac: str) -> list[SensorEntity]:
         result: list[SensorEntity] = []
-        for field in CONNECTION_FIELDS:
+        host = (coordinator.data or {}).get(mac)
+        fields = (
+            tuple(field for field in CONNECTION_FIELDS if field not in ("switch_port", "port_speed"))
+            if _is_wlan(host) else CONNECTION_FIELDS
+        )
+        for field in fields:
             identity = (mac, field)
             if identity not in registered_connection_sensors:
                 registered_connection_sensors.add(identity)
@@ -53,6 +58,27 @@ async def async_setup_entry(
     registered_wlan_metrics: set[tuple[str, str]] = set()
     registered_wlan_metadata: set[tuple[str, str]] = set()
     registry = er.async_get(hass)
+    # Remove previously registered LAN-only sensors from WLAN devices.
+    # Their stable IDs are recreated if a device is later detected as Ethernet.
+    def _prune_wlan_lan_sensors() -> None:
+        for registered in list(er.async_entries_for_config_entry(registry, entry.entry_id)):
+            if registered.domain != "sensor" or registered.platform != DOMAIN:
+                continue
+            unique_id = registered.unique_id
+            for field in ("switch_port", "port_speed"):
+                suffix = f"_connection_{field}"
+                if not unique_id.startswith("host_") or not unique_id.endswith(suffix):
+                    continue
+                compact_mac = unique_id[len("host_"):-len(suffix)]
+                if len(compact_mac) != 12:
+                    continue
+                mac = ":".join(compact_mac[i:i+2] for i in range(0, 12, 2)).upper()
+                if _is_wlan((coordinator.data or {}).get(mac)):
+                    registry.async_remove(registered.entity_id)
+                    registered_connection_sensors.discard((mac, field))
+                break
+
+    _prune_wlan_lan_sensors()
     obsolete = ("mesh_channel", "mesh_peer_channel_width", "mesh_signal_rx_raw")
     for registered in list(er.async_entries_for_config_entry(registry, entry.entry_id)):
         if registered.domain == "sensor" and registered.platform == DOMAIN and any(
@@ -158,6 +184,7 @@ async def async_setup_entry(
     @callback
     def _add_new_hosts() -> None:
         """Add entities for devices first seen during a later scan."""
+        _prune_wlan_lan_sensors()
         new_entities: list[SensorEntity] = []
         for mac in sorted((coordinator.data or {}).keys()):
             if mac not in known_macs:
