@@ -101,6 +101,10 @@ class FritzBoxRouterMetricSensor(CoordinatorEntity, SensorEntity):
             self._attr_native_unit_of_measurement = unit
         if metric in ("bytes_received", "bytes_sent"):
             self._attr_device_class = SensorDeviceClass.DATA_SIZE
+            # Keep raw TR-064 byte counters and statistics intact. Ask Home
+            # Assistant to display them in decimal GB instead of long B values.
+            self._attr_suggested_unit_of_measurement = "GB"
+            self._attr_suggested_display_precision = 2
             self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         elif metric in ("download_rate", "upload_rate"):
             self._attr_device_class = SensorDeviceClass.DATA_RATE
