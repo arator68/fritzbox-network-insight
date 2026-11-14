@@ -31,12 +31,14 @@ def build_topology_view(graph: Mapping[str, Any]) -> dict[str, Any]:
                 "device_type_source": item.get("device_type_source"),
                 "device_type_confidence": item.get("device_type_confidence"),
                 "mesh_role": item.get("mesh_role"),
+                "known_host": bool(item.get("known_host", False)),
             }
 
     def ensure(mac: str) -> None:
         nodes.setdefault(mac, {
             "id": mac, "mac": mac, "name": mac,
             "ip_address": "", "device_type": None, "mesh_role": None,
+            "known_host": False,
         })
 
     edges: list[dict[str, Any]] = []
