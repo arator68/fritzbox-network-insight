@@ -9,6 +9,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .router_device import router_device_info
 from .coordinator import FritzBoxDataUpdateCoordinator
 
 
@@ -33,10 +34,7 @@ class ManualDiscoveryResultSensor(
         self._mac = mac
         if mac is None:
             self._attr_unique_id = f"{entry.entry_id}_manual_discovery_result"
-            self._attr_device_info = DeviceInfo(
-                identifiers={(DOMAIN, entry.entry_id)},
-                name=f"FRITZ!Box {entry.data.get('host', '')}",
-            )
+            self._attr_device_info = router_device_info(coordinator, entry)
         else:
             compact_mac = mac.replace(":", "").lower()
             self._attr_unique_id = f"host_{compact_mac}_manual_discovery_result"
