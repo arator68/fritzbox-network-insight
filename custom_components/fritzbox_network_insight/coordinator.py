@@ -36,6 +36,7 @@ from .topology.model import build_lldp_links, topology_snapshot
 from .topology.store import TopologyStore
 from .topology.fdb_model import build_fdb_observations
 from .topology.fdb_store import FdbTopologyStore
+from .switch_port_telemetry_store import SwitchPortTelemetryStore
 from .topology.combined import build_combined_topology
 from .topology.internal_graph import build_internal_graph
 from .topology.manual_store import ManualTopologyStore, sanitize_links
@@ -61,6 +62,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
     ) -> None:
         self.client = client
         self.discovery_results: dict[str | None, dict[str, Any]] = {}
+        self.switch_port_telemetry_store = SwitchPortTelemetryStore(hass, entry.entry_id)
         self.device_identifications: dict[str, dict[str, str]] = {}
         self.device_details: dict[str, DeviceDetails] = {}
         self.identification_store = IdentificationStore(hass, entry.entry_id)
@@ -123,6 +125,13 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         except Exception:
             _LOGGER.exception("Could not load saved FDB topology")
             self.fdb_observations = {}
+
+    async def async_load_switch_port_telemetry(self) -> None:
+        """Restore last observed port measurements before the first host scan."""
+        try:
+            self.discovery_results.update(await self.switch_port_telemetry_store.async_load())
+        except Exception:
+            _LOGGER.exception("Could not load saved switch port telemetry")
 
     async def async_load_port_history(self) -> None:
         """Restore last-seen port records without claiming devices are online."""
@@ -321,6 +330,20 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             "last_run": datetime.now(timezone.utc).isoformat(),
         }
         # Manual SNMP discovery runs independently of the periodic host scan.
+        # Keep only complete, verified port telemetry for restart recovery.
+        # Persisted readings are last-observed, never current link assertions.
+        if (mac is not None and "snmp" in protocols
+                and result_details.get("port_telemetry_status") == "ok"):
+            saved = self.switch_port_telemetry_store.sanitize({
+                mac: self.discovery_results[mac],
+            })
+            if saved:
+                try:
+                    existing = await self.switch_port_telemetry_store.async_load()
+                    existing.update(saved)
+                    await self.switch_port_telemetry_store.async_save(existing)
+                except Exception:
+                    _LOGGER.exception("Could not persist switch port telemetry")
         # Refresh derived port evidence immediately from the new observations.
         # The next host scan will rebuild the same evidence from scratch.
         if self.device_details and mac is not None:
