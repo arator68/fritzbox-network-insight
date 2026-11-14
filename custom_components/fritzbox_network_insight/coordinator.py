@@ -275,7 +275,9 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             except (ValueError, TypeError):
                 _LOGGER.debug("Could not parse LLDP neighbor observations")
         topology_changed = False
-        if mac is not None and "snmp" in protocols and "lldp_neighbors" in result_details:
+        if (mac is not None and "snmp" in protocols
+                and result_details.get("lldp_status") == "ok"
+                and "lldp_neighbors" in result_details):
             try:
                 parsed = json.loads(result_details["lldp_neighbors"])
                 if isinstance(parsed, list) and all(isinstance(n, dict) for n in parsed):
@@ -436,22 +438,19 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                     if evidence is None:
                         continue
                     details = adapter.results.get(mac, {})
+                    # LLDP and FDB must refresh independently. Do not
+                    # discard a valid LLDP port move when FDB is incomplete.
                     if details.get("fdb_status") != "ok" or details.get("fdb_truncated") != "false":
-                        continue
-                    # An empty automatic walk must not erase previously verified
-                    # observations while Home Assistant is starting.
-                    try:
-                        fresh_fdb = json.loads(details.get("fdb_entries", "null"))
-                    except (TypeError, ValueError):
-                        continue
-                    if not isinstance(fresh_fdb, list):
-                        continue
-                    if not fresh_fdb and self.fdb_observations.get(mac):
-                        _LOGGER.warning(
-                            "Preserving %d restored FDB observations after an empty automatic SNMP walk",
-                            len(self.fdb_observations[mac]),
-                        )
-                        continue
+                        details.pop("fdb_entries", None)
+                    else:
+                        try:
+                            fresh_fdb = json.loads(details.get("fdb_entries", "null"))
+                        except (TypeError, ValueError):
+                            fresh_fdb = None
+                        if not isinstance(fresh_fdb, list) or (
+                            not fresh_fdb and self.fdb_observations.get(mac)
+                        ):
+                            details.pop("fdb_entries", None)
                     await self.async_record_manual_discovery(
                         mac, status="responded", requested=1, checked=1,
                         protocols=("snmp",), details=details,
