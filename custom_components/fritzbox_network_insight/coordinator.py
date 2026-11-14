@@ -346,9 +346,31 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                     await self.switch_port_telemetry_store.async_save(existing)
                 except Exception:
                     _LOGGER.exception("Could not persist switch port telemetry")
-        # Refresh derived port evidence immediately from the new observations.
-        # The next host scan will rebuild the same evidence from scratch.
+        # A manual SNMP scan must publish the switch's own IF-MIB telemetry
+        # immediately. Otherwise LLDP connection sensors see stale device details
+        # until the next periodic host scan.
         if self.device_details and mac is not None:
+            details = self.device_details.get(mac)
+            if (
+                details is not None
+                and "snmp" in protocols
+                and result_details.get("port_telemetry_status") == "ok"
+            ):
+                fresh = DeviceDetails(mac=mac)
+                add_snmp_details(fresh, self.discovery_results[mac])
+                # Replace only the refreshed IF-MIB observations, avoiding
+                # duplicate readings and preserving all other detail sources.
+                for key in (
+                    "snmp_port_telemetry",
+                    "snmp_port_telemetry_status",
+                    "snmp_port_telemetry_reason",
+                    "snmp_port_telemetry_columns",
+                ):
+                    if key in fresh.observations:
+                        details.observations[key] = fresh.observations[key]
+                    else:
+                        details.observations.pop(key, None)
+            # Refresh FDB reachability independently of direct LLDP links.
             add_lan_port_details(
                 self.device_details, self.discovery_results, self.fdb_observations
             )
