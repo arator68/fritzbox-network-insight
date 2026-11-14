@@ -116,7 +116,30 @@ class FritzBoxDeviceConnectionSensor(
                         "direct_connection": "confirmed",
                     }
                 if self._field == "port_speed":
-                    return None, {"evidence": "lldp_last_observed"}
+                    # Join the exact LLDP switch interface to that switch's
+                    # independently observed IF-MIB port telemetry.
+                    switch_details = self.coordinator.device_details.get(peer_mac)
+                    matches = (
+                        [item.value for item in switch_details.values("snmp_port_telemetry")
+                         if isinstance(item.value, dict)
+                         and item.value.get("interface_name") == peer_port]
+                        if switch_details is not None and peer_port else []
+                    )
+                    attrs = {
+                        "switch_mac": peer_mac,
+                        "interface_name": peer_port,
+                        "evidence": "lldp_last_observed",
+                        "direct_connection": "confirmed",
+                    }
+                    if len(matches) == 1:
+                        port = matches[0]
+                        speed = port.get("reported_speed_mbps")
+                        if isinstance(speed, (int, float)) and not isinstance(speed, bool) and speed > 0:
+                            return int(speed), {
+                                **attrs, "speed_source": port.get("speed_source"),
+                                "oper_status": port.get("oper_status"),
+                            }
+                    return None, attrs
 
         # The port is the observed switch ingress, not necessarily a direct
         # endpoint cable. Require exactly one matching FDB observation.
