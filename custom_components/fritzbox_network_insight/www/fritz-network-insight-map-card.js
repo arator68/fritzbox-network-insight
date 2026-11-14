@@ -182,7 +182,8 @@ class FritzNetworkInsightMapCard extends HTMLElement {
       </button>`;
     }).join("");
     const lines = edges.filter(e => positions.has(e.source) && positions.has(e.target)).map(e => {
-      const a = positions.get(e.source), b = positions.get(e.target);\n      const upper = a.y <= b.y ? a : b, lower = a.y <= b.y ? b : a;
+      const a = positions.get(e.source), b = positions.get(e.target);
+      const upper = a.y <= b.y ? a : b, lower = a.y <= b.y ? b : a;
       const dashed = e.kind !== "lan";
       return `<path d="M ${upper.x} ${upper.y+72} C ${upper.x} ${(upper.y+lower.y)/2+45}, ${lower.x} ${(upper.y+lower.y)/2+45}, ${lower.x} ${lower.y}" class="${e.kind === "reachability" ? "reachability" : dashed ? "wlan" : "lan"}"><title>${esc(e.evidence)}${e.port ? " · "+esc(e.port):""}</title></path>`;
     }).join("");
@@ -238,7 +239,8 @@ class FritzNetworkInsightMapCard extends HTMLElement {
         .fnm-graph{position:relative;margin:auto;min-width:100%}
         .fnm-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
         .fnm-lines path{fill:none;stroke:var(--line);stroke-width:2.5;opacity:.85}
-        .fnm-lines .wlan{stroke-dasharray:8 7;stroke:var(--repeater)}\n        .fnm-lines .reachability{stroke-dasharray:3 7;stroke:#e6a04b;opacity:.55}
+        .fnm-lines .wlan{stroke-dasharray:8 7;stroke:var(--repeater)}
+        .fnm-lines .reachability{stroke-dasharray:3 7;stroke:#e6a04b;opacity:.55}
         .fnm-node{position:absolute;display:flex;align-items:center;gap:8px;width:190px;min-height:73px;box-sizing:border-box;padding:10px;border:1px solid var(--line);border-top:4px solid var(--switch);border-radius:10px;background:var(--tile);color:var(--fg);cursor:pointer;text-align:left}
         .fnm-node.router{border-top-color:var(--router)}.fnm-node.repeater{border-top-color:var(--repeater)}
         .fnm-node:hover,.fnm-device:hover{filter:brightness(1.2)}
