@@ -15,6 +15,7 @@ from fritzconnection.core.exceptions import (
 from fritzconnection.lib.fritzhosts import FritzHosts
 
 from .device import normalize_host
+from .router_monitoring import read_router_metrics
 
 
 class FritzBoxAuthenticationError(Exception):
@@ -39,6 +40,7 @@ class FritzBoxClient:
         self.username = username
         self.password = password
         self.timeout = timeout
+        self.router_metrics: dict[str, Any] = {}
 
     def get_hosts(self) -> list[dict[str, Any]]:
         """Connect and return normalized hosts."""
@@ -50,6 +52,8 @@ class FritzBoxClient:
                 timeout=self.timeout,
             )
             raw_hosts = FritzHosts(connection).get_hosts_attributes()
+            # Optional read-only monitoring; failures must not affect host scans.
+            self.router_metrics = read_router_metrics(connection)
         except (FritzAuthorizationError, FritzSecurityError) as err:
             raise FritzBoxAuthenticationError from err
         except (FritzConnectionException, OSError, TimeoutError) as err:
