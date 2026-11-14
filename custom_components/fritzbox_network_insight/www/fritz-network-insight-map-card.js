@@ -111,7 +111,8 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     const design = ["lcars","cyber","modern-dark","modern-light"].includes(this.config.design)
       ? this.config.design : "lcars";
     const selected = map.get(this._selected);
-    const details = selected ? edges.filter(e => e.source === this._selected || e.target === this._selected) : [];\n    const selectedConnection = selected ? this._deviceConnection(selected) : null;
+    const details = selected ? edges.filter(e => e.source === this._selected || e.target === this._selected) : [];
+    const selectedConnection = selected ? this._deviceConnection(selected) : null;
     const nodeButtons = [...positions.entries()].map(([id,p]) => {
       const n = map.get(id);
       const kind = this._kind(n);
