@@ -52,7 +52,8 @@ class ManualDiscoveryResultSensor(
     def native_value(self) -> str:
         """Return the most recent result, or not_started after restart."""
         record = self.coordinator.discovery_results.get(self._mac)
-        return str(record["status"]) if record else "not_started"
+        status = record.get("status") if isinstance(record, dict) else None
+        return status if status in self._attr_options else "not_started"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
