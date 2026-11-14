@@ -55,6 +55,10 @@ class SwitchPortTelemetryStore:
             else:
                 if observation.get("port_telemetry_status") == "ok":
                     output[mac] = {
+                        # Restored IF-MIB measurements are SNMP observations.
+                        # add_snmp_details requires this provenance to rebuild
+                        # the switch's detail model after a Home Assistant restart.
+                        "protocols": ["snmp"],
                         "port_telemetry_status": "ok",
                         "port_telemetry": json.dumps(safe_ports),
                         "last_run": str(observation.get("last_run") or "")[:64],
