@@ -60,55 +60,34 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     if (kind.includes("repeater") || role.includes("repeater")) return "repeater";
     return "device";
   }
-  _layout(nodes, edges) {
+  _layout(nodes) {
+    // Presentation-only layout: no graph traversal or relationship inference.
+    // The integration alone decides which edges are present.
     const map = new Map(nodes.map(n => [String(n.id || n.mac), n]));
     const components = nodes.filter(n => this._kind(n) !== "device");
-    const componentIds = new Set(components.map(n => String(n.id || n.mac)));
-    const componentEdges = edges.filter(e => componentIds.has(String(e.source)) && componentIds.has(String(e.target)));
-    const root = components.find(n => this._kind(n) === "router") || components[0];
-    const depths = new Map();
-    if (root) {
-      const queue = [[String(root.id || root.mac), 0]];
-      while (queue.length) {
-        const [id, depth] = queue.shift();
-        if (depths.has(id)) continue;
-        depths.set(id, depth);
-        componentEdges.filter(e => String(e.source) === id || String(e.target) === id).forEach(e => {
-          const other = String(e.source) === id ? String(e.target) : String(e.source);
-          if (!depths.has(other)) queue.push([other, depth + 1]);
-        });
-      }
-    }
-    components.forEach(n => {
-      const id = String(n.id || n.mac);
-      if (!depths.has(id)) depths.set(id, Math.max(0, ...depths.values()) + 1);
-    });
-    const layers = new Map();
-    components.forEach(n => {
-      const d = depths.get(String(n.id || n.mac)) || 0;
-      if (!layers.has(d)) layers.set(d, []);
-      layers.get(d).push(n);
-    });
+    const groups = ["router", "switch", "repeater"];
+    const layers = groups.map(kind => components.filter(n => this._kind(n) === kind))
+      .filter(layer => layer.length);
     const positions = new Map();
-    const width = Math.max(680, ...[...layers.values()].map(layer => layer.length * 240 + 40));
-    [...layers.entries()].forEach(([depth, layer]) => {
+    const width = Math.max(680, ...layers.map(layer => layer.length * 240 + 40));
+    layers.forEach((layer, depth) => {
       layer.sort((a,b) => String(a.name).localeCompare(String(b.name)));
       layer.forEach((n,i) => positions.set(String(n.id || n.mac), {
         x: width * (i + 1) / (layer.length + 1), y: 65 + depth * 160
       }));
     });
-    return { positions, width, height: Math.max(240, 160 * layers.size + 35), map };
+    return { positions, width, height: Math.max(240, 160 * layers.length + 35), map };
   }
   render() {
     if (!this.config) return;
     const esc = v => this._esc(v);
     const data = this._data;
-    const nodes = data?.nodes || [];
-    const edges = (data?.edges || []).filter(e =>
+    // Only current FRITZ!Box hosts, never stale LLDP/FDB/Mesh-only identities.\n    const nodes = (data?.nodes || []).filter(n => n.known_host === true);\n    const currentIds = new Set(nodes.map(n => String(n.id || n.mac)));
+    const edges = (data?.edges || []).filter(e =>\n      currentIds.has(String(e.source)) && currentIds.has(String(e.target)) &&
       (e.kind === "confirmed_lan" && e.physical_link_confirmed === true) ||
       (e.kind === "mesh_wlan" && e.evidence === "avm_mesh")
     );
-    const {positions, width, height, map} = this._layout(nodes, edges);
+    const {positions, width, height, map} = this._layout(nodes);
     const kindLabel = { router: "Router", switch: "Switch", repeater: "Repeater", device: "Gerät" };
     const kindIcon = { router: "◉", switch: "▦", repeater: "⌁", device: "●" };
     const design = ["lcars","cyber","modern-dark","modern-light"].includes(this.config.design)
@@ -152,13 +131,13 @@ class FritzNetworkInsightMapCard extends HTMLElement {
               ${nodeButtons}
             </div>
           </div>
-          <div class="fnm-legend"><span>━ LLDP (direkt)</span><span>┄ Mesh-WLAN</span><span>FDB ist kein Kabelnachweis</span></div>
+          <div class="fnm-legend"><span>━ LLDP (direkt)</span><span>┄ Mesh-WLAN</span><span>Keine Verbindungen werden in der Karte berechnet</span></div>
           ${selected ? `<section class="fnm-detail"><button class="fnm-close">×</button><strong>${esc(selected.name || selected.mac)}</strong>
              <div>${esc(selected.mac)} · ${esc(selected.ip_address || "")}</div>
              <div>${details.map(e => `${esc(map.get(e.source === this._selected ? e.target : e.source)?.name || (e.source === this._selected ? e.target : e.source))} · ${esc(e.evidence)}${e.port ? " · "+esc(e.port) : ""}`).join("<hr>") || "Keine bestätigte direkte Verbindung"}</div>
            </section>` : ""}
           <details class="fnm-devices"><summary>Verbundene Endgeräte (${linkedDevices.length})</summary><div class="fnm-grid">${deviceItems(linkedDevices)}</div></details>
-          <details class="fnm-devices"><summary>Ohne bestätigte Verbindung (${unassigned.length})</summary><div class="fnm-grid">${deviceItems(unassigned)}</div></details>
+          <details class="fnm-devices"><summary>Ohne ausgewiesene Direktverbindung (${unassigned.length})</summary><div class="fnm-grid">${deviceItems(unassigned)}</div></details>
           ` : ""}
         </div>
       </ha-card>
