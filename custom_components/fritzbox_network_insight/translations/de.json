@@ -100,7 +100,7 @@
         "name": "Verbindungstyp"
       },
       "connection_peer": {
-        "name": "Verbunden mit"
+        "name": "Direkt verbunden mit"
       },
       "connection_switch_port": {
         "name": "Switch-Port"
