@@ -24,8 +24,8 @@ MAX_NEIGHBORS = 16
 WALK_TIMEOUT = 2.5
 
 
-async def async_read_lldp(engine: Any, user: Any, target: Any) -> list[dict[str, str]]:
-    """Read a small bounded portion of the standard LLDP MIB."""
+async def async_read_lldp_with_status(engine: Any, user: Any, target: Any) -> dict[str, Any]:
+    """Read LLDP and report whether the bounded walk completed successfully."""
     from pysnmp.hlapi.v3arch.asyncio import (
         ContextData, ObjectIdentity, ObjectType, walk_cmd,
     )
@@ -38,14 +38,14 @@ async def async_read_lldp(engine: Any, user: Any, target: Any) -> list[dict[str,
             lexicographicMode=False,
         ):
             if error or status:
-                break
+                raise RuntimeError("LLDP walk failed")
             for oid, value in var_binds:
                 oid_text = str(oid)
                 if not oid_text.startswith(base + "."):
                     return rows
                 rows.append((oid_text, str(value)))
                 if len(rows) >= MAX_ROWS:
-                    return rows
+                    raise RuntimeError("LLDP walk truncated")
         return rows
 
     async def _read() -> list[dict[str, str]]:
@@ -83,7 +83,12 @@ async def async_read_lldp(engine: Any, user: Any, target: Any) -> list[dict[str,
         return neighbors
 
     try:
-        return await asyncio.wait_for(_read(), timeout=WALK_TIMEOUT)
-    except (TimeoutError, Exception):
-        # A failed LLDP read must not invalidate a successful SNMP sysInfo probe.
-        return []
+        return {"status": "ok", "neighbors": await asyncio.wait_for(_read(), timeout=WALK_TIMEOUT)}
+    except Exception:
+        # A failed read is not an empty neighbor table.
+        return {"status": "failed", "neighbors": []}
+
+
+async def async_read_lldp(engine: Any, user: Any, target: Any) -> list[dict[str, str]]:
+    """Backward-compatible reader for existing callers."""
+    return (await async_read_lldp_with_status(engine, user, target))["neighbors"]
