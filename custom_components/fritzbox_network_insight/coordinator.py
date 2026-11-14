@@ -114,6 +114,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         """Restore last-observed LLDP links; not a live connectivity claim."""
         try:
             self.topology_observations = await self.topology_store.async_load()
+            _LOGGER.info("Restored LLDP topology: %d sources, %d links", len(self.topology_observations), sum(len(v) for v in self.topology_observations.values()))
         except Exception:
             _LOGGER.exception("Could not load saved LLDP topology")
             self.topology_observations = {}
@@ -122,6 +123,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         """Restore last manual FDB observations, not live connectivity."""
         try:
             self.fdb_observations = await self.fdb_topology_store.async_load()
+            _LOGGER.info("Restored FDB topology: %d sources, %d observations", len(self.fdb_observations), sum(len(v) for v in self.fdb_observations.values()))
         except Exception:
             _LOGGER.exception("Could not load saved FDB topology")
             self.fdb_observations = {}
@@ -367,12 +369,14 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             async with self._topology_save_lock:
                 try:
                     await self.fdb_topology_store.async_save(self.fdb_observations)
+                    _LOGGER.info("Saved FDB topology: %d sources, %d observations", len(self.fdb_observations), sum(len(v) for v in self.fdb_observations.values()))
                 except Exception:
                     _LOGGER.exception("Could not persist FDB topology")
         if topology_changed:
             async with self._topology_save_lock:
                 try:
                     await self.topology_store.async_save(self.topology_observations)
+                    _LOGGER.info("Saved LLDP topology: %d sources, %d links", len(self.topology_observations), sum(len(v) for v in self.topology_observations.values()))
                 except Exception:
                     _LOGGER.exception("Could not persist LLDP topology")
         if changed:
