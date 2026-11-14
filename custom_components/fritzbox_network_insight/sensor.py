@@ -12,6 +12,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .router_device import router_device_info
 from .coordinator import FritzBoxDataUpdateCoordinator
 from .entity_id_migration import (
     migrate_legacy_status_entity_id,
@@ -350,13 +351,7 @@ class FritzBoxDeviceCountSensor(
     ) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{entry.entry_id}_device_count"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=f"FRITZ!Box {entry.data.get('host', '')}",
-            manufacturer="AVM",
-            model="FRITZ!Box",
-            configuration_url=f"http://{entry.data.get('host', '')}",
-        )
+        self._attr_device_info = router_device_info(coordinator, entry)
 
     @property
     def native_value(self) -> int:
@@ -538,12 +533,7 @@ class FritzBoxTopologySensor(
     ) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{entry.entry_id}_lldp_topology"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=f"FRITZ!Box {entry.data.get('host', '')}",
-            manufacturer="AVM",
-            model="FRITZ!Box",
-        )
+        self._attr_device_info = router_device_info(coordinator, entry)
 
     @property
     def native_value(self) -> int:
@@ -572,12 +562,7 @@ class FritzBoxFdbTopologySensor(
     ) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{entry.entry_id}_fdb_topology"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=f"FRITZ!Box {entry.data.get('host', '')}",
-            manufacturer="AVM",
-            model="FRITZ!Box",
-        )
+        self._attr_device_info = router_device_info(coordinator, entry)
 
     @property
     def native_value(self) -> int:
@@ -628,12 +613,7 @@ class FritzBoxCombinedTopologySensor(
     ) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{entry.entry_id}_combined_topology"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=f"FRITZ!Box {entry.data.get('host', '')}",
-            manufacturer="AVM",
-            model="FRITZ!Box",
-        )
+        self._attr_device_info = router_device_info(coordinator, entry)
 
     @property
     def native_value(self) -> int:
