@@ -44,8 +44,7 @@ async def async_setup_entry(
         result: list[SensorEntity] = []
         host = (coordinator.data or {}).get(mac)
         fields = (
-            tuple(field for field in CONNECTION_FIELDS if field not in ("switch_port", "port_speed"))
-            if _is_wlan(host) else CONNECTION_FIELDS
+            ("type",) if _is_wlan(host) else CONNECTION_FIELDS
         )
         for field in fields:
             identity = (mac, field)
@@ -58,14 +57,15 @@ async def async_setup_entry(
     registered_wlan_metrics: set[tuple[str, str]] = set()
     registered_wlan_metadata: set[tuple[str, str]] = set()
     registry = er.async_get(hass)
-    # Remove previously registered LAN-only sensors from WLAN devices.
-    # Their stable IDs are recreated if a device is later detected as Ethernet.
+    # Remove redundant general connection sensors from WLAN devices.
+    # The WLAN-specific peer sensor remains the single source for its parent.
+    # Stable IDs are recreated if a device later becomes Ethernet.
     def _prune_wlan_lan_sensors() -> None:
         for registered in list(er.async_entries_for_config_entry(registry, entry.entry_id)):
             if registered.domain != "sensor" or registered.platform != DOMAIN:
                 continue
             unique_id = registered.unique_id
-            for field in ("switch_port", "port_speed"):
+            for field in ("switch_port", "port_speed", "peer", "evidence"):
                 suffix = f"_connection_{field}"
                 if not unique_id.startswith("host_") or not unique_id.endswith(suffix):
                     continue
