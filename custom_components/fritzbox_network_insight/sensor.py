@@ -12,7 +12,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .router_device import router_device_info, router_mac, prune_router_host_discovery
+from .router_device import router_device_info, router_mac, router_display_name, prune_router_host_discovery
 from .coordinator import FritzBoxDataUpdateCoordinator
 from .entity_id_migration import (
     migrate_legacy_status_entity_id,
@@ -416,7 +416,7 @@ class FritzBoxHostStatusSensor(
         self.entity_id = f"sensor.fritzbox_network_insight_{compact_mac}_status"
 
         host = (coordinator.data or {}).get(mac, {})
-        device_name = host.get("name") or mac
+        device_name = router_display_name(coordinator, entry, mac) or host.get("name") or mac
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, mac)},
             name=device_name,
@@ -430,7 +430,8 @@ class FritzBoxHostStatusSensor(
         info = DeviceInfo(
             identifiers={(DOMAIN, self._mac)},
             connections={("mac", self._mac)},
-            name=str(host.get("name") or self._mac),
+            name=router_display_name(self.coordinator, self.coordinator.entry, self._mac)
+            or str(host.get("name") or self._mac),
         )
         identification = self.coordinator.device_identifications.get(self._mac) or {}
         manufacturer = identification.get("device_manufacturer")
