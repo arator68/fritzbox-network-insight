@@ -12,7 +12,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .router_device import router_device_info
+from .router_device import router_device_info, router_mac, prune_router_host_discovery
 from .coordinator import FritzBoxDataUpdateCoordinator
 from .entity_id_migration import (
     migrate_legacy_status_entity_id,
@@ -38,6 +38,8 @@ async def async_setup_entry(
 ) -> None:
     """Create the overview sensor and one status sensor per discovered MAC."""
     coordinator: FritzBoxDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+    router = router_mac(coordinator, entry)
+    prune_router_host_discovery(hass, coordinator, entry)
     known_macs: set[str] = set()
     registered_connection_sensors: set[tuple[str, str]] = set()
 
@@ -174,7 +176,8 @@ async def async_setup_entry(
     for mac in sorted((coordinator.data or {}).keys()):
         entities.append(FritzBoxHostStatusSensor(coordinator, entry, mac))
         entities.extend(_connection_entities(mac))
-        entities.append(ManualDiscoveryResultSensor(coordinator, entry, mac))
+        if mac != router:
+            entities.append(ManualDiscoveryResultSensor(coordinator, entry, mac))
         if _is_wlan((coordinator.data or {}).get(mac)):
             entities.extend(_wlan_entities(mac))
             entities.extend(_wlan_metadata_entities(mac))
@@ -214,7 +217,8 @@ async def async_setup_entry(
                 known_macs.add(mac)
                 new_entities.append(FritzBoxHostStatusSensor(coordinator, entry, mac))
                 new_entities.extend(_connection_entities(mac))
-                new_entities.append(ManualDiscoveryResultSensor(coordinator, entry, mac))
+                if mac != router_mac(coordinator, entry):
+                    new_entities.append(ManualDiscoveryResultSensor(coordinator, entry, mac))
             if mac not in wlan_macs and _is_wlan((coordinator.data or {}).get(mac)):
                 wlan_macs.add(mac)
                 new_entities.extend(_wlan_entities(mac))
