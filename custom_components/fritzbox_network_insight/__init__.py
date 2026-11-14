@@ -34,6 +34,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_load_identifications()
     await coordinator.async_load_topology()
     await coordinator.async_load_fdb_topology()
+    await coordinator.async_load_switch_port_telemetry()
     await coordinator.async_load_manual_links()
     await coordinator.async_load_port_history()
     # IEEE vendor CSV must be read outside the HA event loop.
