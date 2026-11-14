@@ -108,7 +108,7 @@ class FritzBoxDeviceConnectionSensor(
             if peer_is_switch:
                 peer_port = link.get("peer_port")
                 if self._field == "switch_port" and peer_port:
-                    match = re.search(r"(?:/|\\b)(\\d+)$", str(peer_port))
+                    match = re.search(r"/([0-9]+)$", str(peer_port))
                     return (match.group(1) if match else str(peer_port)), {
                         "switch_mac": peer_mac,
                         "interface_name": peer_port,
