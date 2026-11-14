@@ -50,22 +50,48 @@ class FritzBoxDeviceConnectionSensor(
         kind = connection.get("connection_type")
         if self._field == "type":
             return (kind if kind in ("lan", "wlan") else None), {}
-        if self._field == "peer":
-            return connection.get("connected_to"), {
-                "connected_to_mac": connection.get("connected_to_mac"),
-                "evidence": connection.get("connection_evidence"),
-            }
-        if self._field == "evidence":
-            return connection.get("connection_evidence"), {}
-
-        # Switch port and speed are meaningful only for Ethernet endpoints.
         if kind != "lan":
             return None, {}
-        links = connection.get("connections") or []
-        if len(links) != 1:
+
+        # LLDP confirms direct links; FDB identifies reachability only.
+        # Never label FDB as proof of a physical cable.
+        direct = connection.get("connections") or []
+        reachable = connection.get("reachable_via_switch_ports") or []
+        fdb = reachable[0] if len(reachable) == 1 else None
+        link = direct[0] if len(direct) == 1 else None
+
+        if self._field in ("peer", "evidence"):
+            if link is not None:
+                if self._field == "evidence":
+                    return connection.get("connection_evidence"), {}
+                return connection.get("connected_to"), {
+                    "connected_to_mac": connection.get("connected_to_mac"),
+                    "evidence": connection.get("connection_evidence"),
+                }
+            if fdb is None or direct:
+                return None, {}
+            switch_mac = fdb["switch_mac"]
+            if self._field == "evidence":
+                return "fdb_reachable_via_port", {"direct_connection": "unconfirmed"}
+            nodes = self.coordinator.get_combined_topology_snapshot().get("nodes", [])
+            name = next(
+                (node.get("name") for node in nodes
+                 if isinstance(node, dict)
+                 and str(node.get("mac") or "").upper() == switch_mac
+                 and node.get("name")),
+                switch_mac,
+            )
+            return name, {
+                "connected_to_mac": switch_mac,
+                "evidence": "fdb_reachable_via_port",
+                "direct_connection": "unconfirmed",
+            }
+
+        # The port is the observed switch ingress, not necessarily a direct
+        # endpoint cable. Require exactly one matching FDB observation.
+        if fdb is None:
             return None, {}
-        link = links[0]
-        peer_mac = link.get("connected_to_mac")
+        switch_mac = fdb["switch_mac"]
         details = self.coordinator.device_details.get(self._mac)
         if details is None:
             return None, {}
@@ -73,28 +99,21 @@ class FritzBoxDeviceConnectionSensor(
             item.value for item in details.values("lan_switch_port")
             if isinstance(item.value, dict)
             and item.value.get("endpoint_access") == "ethernet"
-            and item.value.get("switch_mac") == peer_mac
+            and item.value.get("switch_mac") == switch_mac
+            and item.value.get("interface_name") == fdb.get("interface_name")
         ]
-        # Require a unique matching port; avoid claiming a port from ambiguous FDB data.
         if len(ports) != 1:
             return None, {}
         port = ports[0]
-        confirmed_bridge_port = link.get("peer_port")
-        if confirmed_bridge_port is None:
-            confirmed_bridge_port = link.get("connected_to_port")
-        if (confirmed_bridge_port is not None
-                and str(port.get("bridge_port")) != str(confirmed_bridge_port)
-                and str(port.get("if_index")) != str(confirmed_bridge_port)):
-            return None, {}
         interface_name = port.get("interface_name")
-        match = re.search(r"(?:/|\b)(\d+)$", str(interface_name or ""))
+        match = re.search(r"(?:/|\\b)(\\d+)$", str(interface_name or ""))
         friendly_port = match.group(1) if match else interface_name
         attrs = {
-            "switch_mac": peer_mac,
+            "switch_mac": switch_mac,
             "interface_name": interface_name,
             "bridge_port": port.get("bridge_port"),
-            "evidence": link.get("evidence"),
-            "port_evidence": port.get("evidence"),
+            "evidence": "fdb_reachable_via_port",
+            "direct_connection": "unconfirmed",
         }
         if self._field == "switch_port":
             return friendly_port or port.get("bridge_port"), attrs
