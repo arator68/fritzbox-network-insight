@@ -39,14 +39,14 @@ class ViewModelTests(unittest.TestCase):
         self.assertEqual(len(view["nodes"]), 2)
         self.assertEqual(view["edges"], [])
 
-    def test_confirmed_switch_and_fdb_branch_not_fabricated_cable(self):
+    def test_lldp_switch_and_fdb_branch_not_fabricated_cable(self):
         graph = {
             "nodes": {mac: {"mac": mac} for mac in (ROUTER, SWITCH, DOWNSTREAM, SERVER)},
             "links": [
                 {"source_mac": SWITCH, "target_mac": ROUTER,
                  "medium": "lan", "evidence": "lldp", "details": {}},
                 {"source_mac": SWITCH, "target_mac": DOWNSTREAM,
-                 "medium": "lan", "evidence": "user_confirmed", "details": {"bridge_port": "49154"}},
+                 "medium": "lan", "evidence": "lldp", "details": {"source_port_number": "2"}},
             ],
             "mesh_lan_observations": [
                 {"source_mac": ROUTER, "target_mac": SERVER},

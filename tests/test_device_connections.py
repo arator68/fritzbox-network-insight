@@ -62,7 +62,7 @@ class DeviceConnectionsTests(unittest.TestCase):
         self.assertEqual(result["parent_mac"], SWITCH)
         self.assertEqual(result["evidence"], "lldp")
 
-    def test_confirmed_downstream_switch_is_transit_not_direct_cable(self):
+    def test_lldp_downstream_switch_is_transit_not_client_cable(self):
         downstream = "EC:75:0C:C2:68:F7"
         graph = {"lan_port_memberships": [{
             "switch_mac": SWITCH, "bridge_port": "49154", "vlan_id": "1",
@@ -74,7 +74,7 @@ class DeviceConnectionsTests(unittest.TestCase):
             ],
         }], "links": [{
             "source_mac": SWITCH, "target_mac": downstream,
-            "medium": "lan", "evidence": "user_confirmed",
+            "medium": "lan", "evidence": "lldp",
         }]}
         entries = {e["mac"]: e for e in resolve_device_connections(graph)}
         self.assertEqual(entries[CLIENT]["transit_neighbor_mac"], downstream)

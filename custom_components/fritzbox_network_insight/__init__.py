@@ -34,7 +34,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_load_identifications()
     await coordinator.async_load_topology()
     await coordinator.async_load_fdb_topology()
-    await coordinator.async_load_manual_links()
     await coordinator.async_load_port_history()
     # IEEE vendor CSV must be read outside the HA event loop.
     await hass.async_add_executor_job(preload_mac_vendor_registry)
@@ -126,11 +125,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             graph = selected.get_internal_topology_graph()
             return {
                 "model_version": graph["model_version"],
-                "manual_links": list(selected.manual_links),
-                "manual_link_count": len(selected.manual_links),
-                "manual_link_checks": graph["manual_link_checks"],
-                "manual_link_check_count": graph["manual_link_check_count"],
-                "manual_link_port_conflict_count": graph["manual_link_port_conflict_count"],
                 "node_count": graph["node_count"],
                 "link_count": graph["link_count"],
                 "reachability_count": graph["reachability_count"],
@@ -198,61 +192,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             schema=vol.Schema({vol.Optional("entry_id"): str}),
             supports_response=SupportsResponse.ONLY,
         )
-    # Register once for all config entries. Entry selection is explicit for
-    # multi-router installations; without an ID only one entry is accepted.
-    def selected_coordinator(call):
-        domain_data = hass.data.get(DOMAIN, {})
-        entry_id = call.data.get("entry_id")
-        if entry_id:
-            selected = domain_data.get(entry_id)
-        elif len(domain_data) == 1:
-            selected = next(iter(domain_data.values()))
-        else:
-            selected = None
-        if selected is None:
-            raise ValueError("Specify a valid entry_id (required with multiple entries)")
-        return selected
-
-    if not hass.services.has_service(DOMAIN, "confirm_topology_link"):
-        async def async_confirm_topology_link(call):
-            selected = selected_coordinator(call)
-            links = await selected.async_set_manual_link(
-                call.data["source_mac"], call.data["target_mac"],
-                bridge_port=call.data.get("bridge_port", ""),
-                vlan_id=call.data.get("vlan_id", ""),
-            )
-            return {"manual_link_count": len(links), "manual_links": links}
-
-        hass.services.async_register(
-            DOMAIN, "confirm_topology_link", async_confirm_topology_link,
-            schema=vol.Schema({
-                vol.Optional("entry_id"): str,
-                vol.Required("source_mac"): str,
-                vol.Required("target_mac"): str,
-                vol.Optional("bridge_port"): str,
-                vol.Optional("vlan_id"): str,
-            }),
-            supports_response=SupportsResponse.OPTIONAL,
-        )
-
-    if not hass.services.has_service(DOMAIN, "remove_topology_link"):
-        async def async_remove_topology_link(call):
-            selected = selected_coordinator(call)
-            links = await selected.async_delete_manual_link(
-                call.data["source_mac"], call.data["target_mac"]
-            )
-            return {"manual_link_count": len(links), "manual_links": links}
-
-        hass.services.async_register(
-            DOMAIN, "remove_topology_link", async_remove_topology_link,
-            schema=vol.Schema({
-                vol.Optional("entry_id"): str,
-                vol.Required("source_mac"): str,
-                vol.Required("target_mac"): str,
-            }),
-            supports_response=SupportsResponse.OPTIONAL,
-        )
-
     _LOGGER.info(
         "FRITZ!Box Network Insight initialized for %s with %d device(s)",
         entry.data[CONF_HOST],
@@ -275,8 +214,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass.services.async_remove(DOMAIN, "topology_diagnostics")
                 hass.services.async_remove(DOMAIN, "repeater_client_raw_diagnostics")
                 hass.services.async_remove(DOMAIN, "topology_view")
-                hass.services.async_remove(DOMAIN, "confirm_topology_link")
-                hass.services.async_remove(DOMAIN, "remove_topology_link")
     return unload_ok
 
 
@@ -296,7 +233,6 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         f"{DOMAIN}.identifications.{entry.entry_id}",
         f"{DOMAIN}.topology.{entry.entry_id}",
         f"{DOMAIN}.fdb.{entry.entry_id}",
-        f"{DOMAIN}.manual_links.{entry.entry_id}",
         f"{DOMAIN}.port_history.{entry.entry_id}",
     )
     for key in keys:

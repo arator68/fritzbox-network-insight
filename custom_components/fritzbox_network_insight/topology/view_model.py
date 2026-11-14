@@ -51,7 +51,7 @@ def build_topology_view(graph: Mapping[str, Any]) -> dict[str, Any]:
             continue
         medium = str(link.get("medium") or "").lower()
         evidence = str(link.get("evidence") or "")
-        if medium == "lan" and evidence in ("lldp", "user_confirmed"):
+        if medium == "lan" and evidence in ("lldp",):
             kind = "confirmed_lan"
             physical_pairs.add(frozenset((source, target)))
         elif medium == "wlan" and evidence == "avm_mesh":
@@ -128,5 +128,5 @@ def build_topology_view(graph: Mapping[str, Any]) -> dict[str, Any]:
         "branches": branches,
         "node_count": len(nodes),
         "edge_count": len(edges),
-        "note": "Only LLDP/user confirmation proves direct LAN; FDB proves reachability.",
+        "note": "Only LLDP proves direct LAN; FDB proves reachability.",
     }
