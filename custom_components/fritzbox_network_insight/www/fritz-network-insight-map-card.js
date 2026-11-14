@@ -78,6 +78,21 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     });
     return { positions, width, height: Math.max(240, 160 * layers.length + 35), map };
   }
+  _deviceConnection(node) {
+    // The exact entity IDs and evidence are already produced by the integration.
+    // Read them, do not infer a physical cable from a switch forwarding table.
+    const compact = String(node.mac || node.id || "").replace(/:/g, "").toLowerCase();
+    const peer = this._hass?.states?.[`sensor.fritzbox_network_insight_${compact}_connection_peer`];
+    if (!peer || ["unknown", "unavailable", "none", ""].includes(String(peer.state).toLowerCase())) return null;
+    const evidence = String(peer.attributes?.evidence || "");
+    return {
+      name: peer.state,
+      mac: peer.attributes?.connected_to_mac || "",
+      evidence,
+      confirmed: peer.attributes?.direct_connection === "confirmed" ||
+        evidence === "lldp_last_observed"
+    };
+  }
   render() {
     if (!this.config) return;
     const esc = v => this._esc(v);
@@ -96,7 +111,7 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     const design = ["lcars","cyber","modern-dark","modern-light"].includes(this.config.design)
       ? this.config.design : "lcars";
     const selected = map.get(this._selected);
-    const details = selected ? edges.filter(e => e.source === this._selected || e.target === this._selected) : [];
+    const details = selected ? edges.filter(e => e.source === this._selected || e.target === this._selected) : [];\n    const selectedConnection = selected ? this._deviceConnection(selected) : null;
     const nodeButtons = [...positions.entries()].map(([id,p]) => {
       const n = map.get(id);
       const kind = this._kind(n);
@@ -112,11 +127,17 @@ class FritzNetworkInsightMapCard extends HTMLElement {
       const dashed = e.kind === "mesh_wlan";
       return `<path d="M ${a.x} ${a.y+72} C ${a.x} ${(a.y+b.y)/2+45}, ${b.x} ${(a.y+b.y)/2+45}, ${b.x} ${b.y}" class="${dashed?"wlan":"lan"}"><title>${esc(e.evidence)}${e.port ? " · "+esc(e.port):""}</title></path>`;
     }).join("");
-    const unassigned = nodes.filter(n => !positions.has(String(n.id || n.mac)) &&
-      !edges.some(e => e.source === (n.id || n.mac) || e.target === (n.id || n.mac)));
-    const linkedDevices = nodes.filter(n => !positions.has(String(n.id || n.mac)) &&
+    const endDevices = nodes.filter(n => !positions.has(String(n.id || n.mac)));
+    const linkedDevices = endDevices.filter(n => this._deviceConnection(n) ||
       edges.some(e => e.source === (n.id || n.mac) || e.target === (n.id || n.mac)));
-    const deviceItems = arr => arr.map(n => `<button class="fnm-device" data-node="${esc(n.id || n.mac)}"><span>●</span>${esc(n.name || n.mac)}<small>${esc(n.ip_address || "")}</small></button>`).join("");
+    const unassigned = endDevices.filter(n => !linkedDevices.includes(n));
+    const deviceItems = arr => arr.map(n => {
+      const connection = this._deviceConnection(n);
+      const relation = connection
+        ? `<small title="${esc(connection.evidence)}">${connection.confirmed ? "Direkt: " : "Über Switch: "}${esc(connection.name)}</small>`
+        : "";
+      return `<button class="fnm-device" data-node="${esc(n.id || n.mac)}"><span>●</span>${esc(n.name || n.mac)}${relation}<small>${esc(n.ip_address || "")}</small></button>`;
+    }).join("");
     const status = this._error ? `<div class="fnm-error">${esc(this._error)}</div>`
       : !data ? '<div class="fnm-info">Topologiedaten werden geladen …</div>' : "";
     this.innerHTML = `
@@ -137,10 +158,10 @@ class FritzNetworkInsightMapCard extends HTMLElement {
           <div class="fnm-legend"><span>━ LLDP (direkt)</span><span>┄ Mesh-WLAN</span><span>Keine Verbindungen werden in der Karte berechnet</span></div>
           ${selected ? `<section class="fnm-detail"><button class="fnm-close">×</button><strong>${esc(selected.name || selected.mac)}</strong>
              <div>${esc(selected.mac)} · ${esc(selected.ip_address || "")}</div>
-             <div>${details.map(e => `${esc(map.get(e.source === this._selected ? e.target : e.source)?.name || (e.source === this._selected ? e.target : e.source))} · ${esc(e.evidence)}${e.port ? " · "+esc(e.port) : ""}`).join("<hr>") || "Keine bestätigte direkte Verbindung"}</div>
+             <div>${details.map(e => `${esc(map.get(e.source === this._selected ? e.target : e.source)?.name || (e.source === this._selected ? e.target : e.source))} · ${esc(e.evidence)}${e.port ? " · "+esc(e.port) : ""}`).join("<hr>") || (selectedConnection ? `${esc(selectedConnection.confirmed ? "Direkt verbunden mit" : "Erreichbar über")} ${esc(selectedConnection.name)} (${esc(selectedConnection.evidence)})` : "Keine Zuordnung vorhanden")}</div>
            </section>` : ""}
-          <details class="fnm-devices"><summary>Verbundene Endgeräte (${linkedDevices.length})</summary><div class="fnm-grid">${deviceItems(linkedDevices)}</div></details>
-          <details class="fnm-devices"><summary>Ohne ausgewiesene Direktverbindung (${unassigned.length})</summary><div class="fnm-grid">${deviceItems(unassigned)}</div></details>
+          <details class="fnm-devices"><summary>Endgeräte mit vorhandener Zuordnung (${linkedDevices.length})</summary><div class="fnm-grid">${deviceItems(linkedDevices)}</div></details>
+          <details class="fnm-devices"><summary>Ohne vorhandene Zuordnung (${unassigned.length})</summary><div class="fnm-grid">${deviceItems(unassigned)}</div></details>
           ` : ""}
         </div>
       </ha-card>
