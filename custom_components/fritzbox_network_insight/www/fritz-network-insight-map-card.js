@@ -171,10 +171,23 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     const selected = map.get(String(this._selected || "").toUpperCase());
     const details = selected ? edges.filter(e => e.source === String(this._selected).toUpperCase() || e.target === String(this._selected).toUpperCase()) : [];
     const selectedConnection = selected ? this._deviceConnection(selected) : null;
+    // Original 0.7.29 presentation: component nodes with their endpoint
+    // groups, not a separate card and line for every individual endpoint.
+    const assignedGroups = new Map([...positions.keys()].map(id => [id, []]));
+    const assigned = new Set();
+    for (const node of nodes.filter(n => this._kind(n) === "device")) {
+      const id = String(node.id || node.mac).toUpperCase();
+      const parents = edges.filter(e => e.target === id && positions.has(e.source));
+      const fallback = edges.filter(e => e.source === id && positions.has(e.target));
+      const parent = parents[0]?.source || fallback[0]?.target;
+      if (!parent) continue;
+      assignedGroups.get(parent).push(node);
+      assigned.add(id);
+    }
     const nodeButtons = [...positions.entries()].map(([id,p]) => {
       const n = map.get(id);
       const kind = this._kind(n);
-      const count = edges.filter(e => e.source === id || e.target === id).length;
+      const count = (assignedGroups.get(id) || []).length;
       return `<button class="fnm-node ${kind}" data-node="${esc(id)}" style="left:${p.x-95}px;top:${p.y}px">
         <span class="fnm-symbol">${kindIcon[kind]}</span>
         <span class="fnm-name"><strong>${esc(n.name || n.mac)}</strong><small>${kindLabel[kind]} · ${esc(n.ip_address || "")}</small></span>
@@ -188,7 +201,7 @@ class FritzNetworkInsightMapCard extends HTMLElement {
       return `<path d="M ${upper.x} ${upper.y+72} C ${upper.x} ${(upper.y+lower.y)/2+45}, ${lower.x} ${(upper.y+lower.y)/2+45}, ${lower.x} ${lower.y}" class="${e.kind === "reachability" ? "reachability" : dashed ? "wlan" : "lan"}"><title>${esc(e.evidence)}${e.port ? " · "+esc(e.port):""}</title></path>`;
     }).join("");
     const endDevices = nodes.filter(n => this._kind(n) === "device");
-    const linkedDevices = endDevices.filter(n => this._deviceConnection(n) ||
+    const linkedDevices = endDevices.filter(n => assigned.has(String(n.id || n.mac).toUpperCase()) || this._deviceConnection(n) ||
       edges.some(e => e.source === (n.id || n.mac) || e.target === (n.id || n.mac)));
     const unassigned = endDevices.filter(n => !linkedDevices.includes(n));
     const deviceItems = arr => arr.map(n => {
@@ -197,6 +210,13 @@ class FritzNetworkInsightMapCard extends HTMLElement {
         ? `<small title="${esc(connection.evidence)}">${connection.confirmed ? "Direkt: " : "Über Switch: "}${esc(connection.name)}</small>`
         : "";
       return `<button class="fnm-device" data-node="${esc(n.id || n.mac)}"><span>●</span>${esc(n.name || n.mac)}${relation}<small>${esc(n.ip_address || "")}</small></button>`;
+    }).join("");
+    const clusterCards = [...assignedGroups.entries()].filter(([,devices]) => devices.length).map(([id, devices]) => {
+      const p = positions.get(id);
+      return `<button class="fnm-cluster" data-node="${esc(id)}" style="left:${p.x-95}px;top:${p.y+85}px">
+        <strong>${devices.length} Endgeräte</strong>
+        <span>${esc(devices.slice(0,3).map(n => n.name || n.mac).join(", "))}${devices.length>3?" …":""}</span>
+      </button>`;
     }).join("");
     const status = this._error ? `<div class="fnm-error">${esc(this._error)}</div>`
       : !data ? '<div class="fnm-info">Topologiedaten werden geladen …</div>' : "";
@@ -212,7 +232,7 @@ class FritzNetworkInsightMapCard extends HTMLElement {
           <div class="fnm-graph-scroll" style="max-height:${Math.max(250, Number(this.config.height) || 620)}px">
             <div class="fnm-graph" style="width:${width}px;height:${height}px">
               <svg class="fnm-lines" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">${lines}</svg>
-              ${nodeButtons}
+              ${nodeButtons}\n              ${clusterCards}
             </div>
           </div>
           <div class="fnm-legend"><span>━ Bestätigtes LAN</span><span>┄ Mesh-WLAN</span><span>┄ FDB: Erreichbarkeit, kein Kabelnachweis</span></div>
@@ -245,6 +265,8 @@ class FritzNetworkInsightMapCard extends HTMLElement {
         .fnm-node.router{border-top-color:var(--router)}.fnm-node.repeater{border-top-color:var(--repeater)}
         .fnm-node:hover,.fnm-device:hover{filter:brightness(1.2)}
         .fnm-symbol{font-size:23px}.fnm-name{min-width:0;flex:1}.fnm-name strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.fnm-name small{display:block;opacity:.7;font-size:10px;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fnm-cluster{position:absolute;width:190px;min-height:52px;box-sizing:border-box;border:1px dashed var(--line);border-radius:8px;background:var(--bg);color:var(--fg);padding:8px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:5px}
+        .fnm-cluster strong{font-size:11px}.fnm-cluster span{font-size:10px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .fnm-count{opacity:.7;font-size:11px}.fnm-legend{display:flex;gap:18px;flex-wrap:wrap;font-size:11px;opacity:.75;padding:10px 2px}
         .fnm-detail{position:relative;border:1px solid var(--line);border-radius:9px;background:var(--tile);padding:14px;font-size:12px}
         .fnm-detail strong{font-size:15px}.fnm-detail>div{margin-top:9px}.fnm-close{float:right}
