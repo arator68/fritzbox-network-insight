@@ -39,6 +39,7 @@ class FritzBoxClient:
         self.username = username
         self.password = password
         self.timeout = timeout
+        self.router_model: str | None = None
 
     def get_hosts(self) -> list[dict[str, Any]]:
         """Connect and return normalized hosts."""
@@ -50,6 +51,9 @@ class FritzBoxClient:
                 timeout=self.timeout,
             )
             raw_hosts = FritzHosts(connection).get_hosts_attributes()
+            model = getattr(connection, "modelname", None)
+            if isinstance(model, str) and model.strip():
+                self.router_model = model.strip()
         except (FritzAuthorizationError, FritzSecurityError) as err:
             raise FritzBoxAuthenticationError from err
         except (FritzConnectionException, OSError, TimeoutError) as err:
