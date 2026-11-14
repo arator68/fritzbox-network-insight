@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .router_device import router_device_info, router_mac, prune_router_host_discovery
+from .router_monitoring import FritzBoxRouterMetricSensor
 from .coordinator import FritzBoxDataUpdateCoordinator
 from .entity_id_migration import (
     migrate_legacy_status_entity_id,
@@ -42,6 +43,18 @@ async def async_setup_entry(
     prune_router_host_discovery(hass, coordinator, entry)
     known_macs: set[str] = set()
     registered_connection_sensors: set[tuple[str, str]] = set()
+    registered_router_metrics: set[str] = set()
+
+    def _router_metric_entities() -> list[SensorEntity]:
+        mac = router_mac(coordinator, entry)
+        if mac is None:
+            return []
+        result: list[SensorEntity] = []
+        for metric in sorted(getattr(coordinator.client, "router_metrics", {})):
+            if metric not in registered_router_metrics:
+                registered_router_metrics.add(metric)
+                result.append(FritzBoxRouterMetricSensor(coordinator, entry, mac, metric))
+        return result
 
     def _connection_entities(mac: str) -> list[SensorEntity]:
         result: list[SensorEntity] = []
@@ -173,6 +186,7 @@ async def async_setup_entry(
         FritzBoxCombinedTopologySensor(coordinator, entry),
         ManualDiscoveryResultSensor(coordinator, entry),
     ]
+    entities.extend(_router_metric_entities())
     for mac in sorted((coordinator.data or {}).keys()):
         entities.append(FritzBoxHostStatusSensor(coordinator, entry, mac))
         entities.extend(_connection_entities(mac))
@@ -189,7 +203,7 @@ async def async_setup_entry(
     def _add_new_hosts() -> None:
         """Add entities for devices first seen during a later scan."""
         _prune_wlan_lan_sensors()
-        new_entities: list[SensorEntity] = []
+        new_entities: list[SensorEntity] = _router_metric_entities()
         for mac in sorted((coordinator.data or {}).keys()):
             if mac not in known_macs:
                 compact_mac = mac.replace(":", "").lower()
