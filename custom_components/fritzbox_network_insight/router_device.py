@@ -18,6 +18,17 @@ def router_mac(coordinator, entry: ConfigEntry) -> str | None:
     return matches[0] if len(matches) == 1 else None
 
 
+def router_display_name(coordinator, entry: ConfigEntry, mac: str) -> str | None:
+    """Use the model reported by the configured router, never a hardcoded model."""
+    if mac != router_mac(coordinator, entry):
+        return None
+    model = getattr(getattr(coordinator, "client", None), "router_model", None)
+    if not isinstance(model, str) or not model.strip():
+        return None
+    model = model.strip()
+    return model if model.casefold().startswith("fritz!box") else f"FRITZ!Box {model}"
+
+
 def router_device_info(coordinator, entry: ConfigEntry) -> DeviceInfo:
     """Reuse a physical router only when its configured address matches uniquely.
 
@@ -53,6 +64,10 @@ def migrate_router_device(hass, coordinator, entry: ConfigEntry) -> int:
     physical = devices.async_get_device(identifiers={(DOMAIN, mac)})
     if physical is None:
         physical = devices.async_get_device(connections={("mac", mac)})
+    if physical is not None:
+        display_name = router_display_name(coordinator, entry, mac)
+        if display_name and physical.name != display_name and getattr(physical, "name_by_user", None) is None:
+            devices.async_update_device(physical.id, name=display_name)
     if old is None or physical is None or old.id == physical.id:
         return 0
     moved = 0

@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -12,7 +13,8 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .router_device import router_device_info, router_mac, prune_router_host_discovery
+from .router_device import router_device_info, router_mac, router_display_name, prune_router_host_discovery
+from .router_monitoring import FritzBoxRouterMetricSensor
 from .coordinator import FritzBoxDataUpdateCoordinator
 from .entity_id_migration import (
     migrate_legacy_status_entity_id,
@@ -42,6 +44,18 @@ async def async_setup_entry(
     prune_router_host_discovery(hass, coordinator, entry)
     known_macs: set[str] = set()
     registered_connection_sensors: set[tuple[str, str]] = set()
+    registered_router_metrics: set[str] = set()
+
+    def _router_metric_entities() -> list[SensorEntity]:
+        mac = router_mac(coordinator, entry)
+        if mac is None:
+            return []
+        result: list[SensorEntity] = []
+        for metric in sorted(getattr(coordinator.client, "router_metrics", {})):
+            if metric not in registered_router_metrics:
+                registered_router_metrics.add(metric)
+                result.append(FritzBoxRouterMetricSensor(coordinator, entry, mac, metric))
+        return result
 
     def _connection_entities(mac: str) -> list[SensorEntity]:
         result: list[SensorEntity] = []
@@ -173,6 +187,7 @@ async def async_setup_entry(
         FritzBoxCombinedTopologySensor(coordinator, entry),
         ManualDiscoveryResultSensor(coordinator, entry),
     ]
+    entities.extend(_router_metric_entities())
     for mac in sorted((coordinator.data or {}).keys()):
         entities.append(FritzBoxHostStatusSensor(coordinator, entry, mac))
         entities.extend(_connection_entities(mac))
@@ -189,7 +204,7 @@ async def async_setup_entry(
     def _add_new_hosts() -> None:
         """Add entities for devices first seen during a later scan."""
         _prune_wlan_lan_sensors()
-        new_entities: list[SensorEntity] = []
+        new_entities: list[SensorEntity] = _router_metric_entities()
         for mac in sorted((coordinator.data or {}).keys()):
             if mac not in known_macs:
                 compact_mac = mac.replace(":", "").lower()
@@ -346,6 +361,7 @@ class FritzBoxDeviceCountSensor(
 
     _attr_has_entity_name = True
     _attr_translation_key = "device_count"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:lan"
 
     def __init__(
@@ -416,7 +432,7 @@ class FritzBoxHostStatusSensor(
         self.entity_id = f"sensor.fritzbox_network_insight_{compact_mac}_status"
 
         host = (coordinator.data or {}).get(mac, {})
-        device_name = host.get("name") or mac
+        device_name = router_display_name(coordinator, entry, mac) or host.get("name") or mac
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, mac)},
             name=device_name,
@@ -430,7 +446,8 @@ class FritzBoxHostStatusSensor(
         info = DeviceInfo(
             identifiers={(DOMAIN, self._mac)},
             connections={("mac", self._mac)},
-            name=str(host.get("name") or self._mac),
+            name=router_display_name(self.coordinator, self.coordinator.entry, self._mac)
+            or str(host.get("name") or self._mac),
         )
         identification = self.coordinator.device_identifications.get(self._mac) or {}
         manufacturer = identification.get("device_manufacturer")
@@ -528,6 +545,7 @@ class FritzBoxTopologySensor(
 
     _attr_has_entity_name = True
     _attr_translation_key = "lldp_topology"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:lan"
 
     def __init__(
@@ -557,6 +575,7 @@ class FritzBoxFdbTopologySensor(
 
     _attr_has_entity_name = True
     _attr_translation_key = "fdb_topology"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:lan"
 
     def __init__(
@@ -608,6 +627,7 @@ class FritzBoxCombinedTopologySensor(
 
     _attr_has_entity_name = True
     _attr_translation_key = "combined_topology"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:lan"
 
     def __init__(

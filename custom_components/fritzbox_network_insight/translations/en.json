@@ -110,6 +110,33 @@
       },
       "connection_evidence": {
         "name": "Connection evidence"
+      },
+      "router_download_rate": {
+        "name": "Download throughput"
+      },
+      "router_upload_rate": {
+        "name": "Upload throughput"
+      },
+      "router_bytes_received": {
+        "name": "Received data"
+      },
+      "router_bytes_sent": {
+        "name": "Sent data"
+      },
+      "router_max_download_rate": {
+        "name": "Maximum download rate"
+      },
+      "router_max_upload_rate": {
+        "name": "Maximum upload rate"
+      },
+      "router_external_ipv4": {
+        "name": "External IPv4"
+      },
+      "router_uptime": {
+        "name": "Connection uptime"
+      },
+      "router_fritz_os": {
+        "name": "FRITZ!OS"
       }
     }
   },
