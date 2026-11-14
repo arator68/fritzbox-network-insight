@@ -61,27 +61,58 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     return "device";
   }
   _layout(nodes, links) {
-    // Only positions are computed here. Every line comes from an existing
-    // integration edge or a connection_peer sensor, never from proximity.
+    // Ported from Network Map 0.7.29: breadth-first component hierarchy,
+    // leaf spacing, parent centered above children. Placement only.
     const map = new Map(nodes.map(n => [String(n.id || n.mac).toUpperCase(), n]));
-    const positions = new Map();
     const components = nodes.filter(n => this._kind(n) !== "device");
-    const endpoints = nodes.filter(n => this._kind(n) === "device");
-    const sort = arr => arr.sort((x, y) => String(x.name || x.mac).localeCompare(String(y.name || y.mac)));
-    const ordered = [...sort(components), ...sort(endpoints)];
-    const columns = 6, cellW = 220, cellH = 112, top = 38;
-    ordered.forEach((n, index) => {
-      const id = String(n.id || n.mac).toUpperCase();
-      positions.set(id, {
-        x: 120 + (index % columns) * cellW,
-        y: top + Math.floor(index / columns) * cellH
-      });
-    });
-    return {
-      positions, map,
-      width: columns * cellW + 20,
-      height: Math.max(220, top + Math.ceil(ordered.length / columns) * cellH + 20)
+    const ids = new Set(components.map(n => String(n.id || n.mac).toUpperCase()));
+    const children = new Map([...ids].map(id => [id, []]));
+    const parents = new Map([...ids].map(id => [id, []]));
+    for (const link of links) {
+      if (!ids.has(link.source) || !ids.has(link.target)) continue;
+      children.get(link.source).push(link.target);
+      parents.get(link.target).push(link.source);
+    }
+    const root = components.find(n => this._kind(n) === "router" && !parents.get(String(n.id || n.mac).toUpperCase()).length)
+      || components.find(n => this._kind(n) === "router") || components[0];
+    const rootId = root ? String(root.id || root.mac).toUpperCase() : "";
+    const treeChildren = new Map([...ids].map(id => [id, []]));
+    const seen = new Set(rootId ? [rootId] : []);
+    const queue = rootId ? [rootId] : [];
+    while (queue.length) {
+      const parentId = queue.shift();
+      for (const child of children.get(parentId) || []) {
+        if (seen.has(child)) continue;
+        seen.add(child);
+        treeChildren.get(parentId).push(child);
+        queue.push(child);
+      }
+    }
+    const disconnected = [...ids].filter(id => !seen.has(id));
+    const roots = [rootId, ...disconnected].filter(Boolean);
+    const leafIndex = new Map(), depth = new Map();
+    let cursor = 0;
+    const visit = (id, d, stack = new Set()) => {
+      if (stack.has(id)) return;
+      depth.set(id, d);
+      const kids = treeChildren.get(id) || [];
+      if (!kids.length) leafIndex.set(id, cursor++);
+      else kids.forEach(child => visit(child, d + 1, new Set([...stack, id])));
     };
+    roots.forEach(id => visit(id, 0));
+    const leafCount = Math.max(1, cursor);
+    const width = Math.max(920, this.clientWidth || 0, 56 + leafCount * 220);
+    const positions = new Map();
+    const place = id => {
+      const kids = treeChildren.get(id) || [];
+      const x = kids.length
+        ? kids.map(place).reduce((a,b) => a + b, 0) / kids.length
+        : 28 + (width - 56) * ((leafIndex.get(id) + .5) / leafCount);
+      positions.set(id, {x, y: 32 + (depth.get(id) || 0) * 176});
+      return x;
+    };
+    roots.forEach(place);
+    return {positions, map, width, height: Math.max(220, 32 + (Math.max(0, ...depth.values()) + 1) * 176 + 20)};
   }
   _deviceConnection(node) {
     // The exact entity IDs and evidence are already produced by the integration.
@@ -151,9 +182,9 @@ class FritzNetworkInsightMapCard extends HTMLElement {
       </button>`;
     }).join("");
     const lines = edges.filter(e => positions.has(e.source) && positions.has(e.target)).map(e => {
-      const a = positions.get(e.source), b = positions.get(e.target);
+      const a = positions.get(e.source), b = positions.get(e.target);\n      const upper = a.y <= b.y ? a : b, lower = a.y <= b.y ? b : a;
       const dashed = e.kind !== "lan";
-      return `<path d="M ${a.x} ${a.y+72} C ${a.x} ${(a.y+b.y)/2+45}, ${b.x} ${(a.y+b.y)/2+45}, ${b.x} ${b.y}" class="${e.kind === "reachability" ? "reachability" : dashed ? "wlan" : "lan"}"><title>${esc(e.evidence)}${e.port ? " · "+esc(e.port):""}</title></path>`;
+      return `<path d="M ${upper.x} ${upper.y+72} C ${upper.x} ${(upper.y+lower.y)/2+45}, ${lower.x} ${(upper.y+lower.y)/2+45}, ${lower.x} ${lower.y}" class="${e.kind === "reachability" ? "reachability" : dashed ? "wlan" : "lan"}"><title>${esc(e.evidence)}${e.port ? " · "+esc(e.port):""}</title></path>`;
     }).join("");
     const endDevices = nodes.filter(n => this._kind(n) === "device");
     const linkedDevices = endDevices.filter(n => this._deviceConnection(n) ||
@@ -188,7 +219,7 @@ class FritzNetworkInsightMapCard extends HTMLElement {
              <div>${esc(selected.mac)} · ${esc(selected.ip_address || "")}</div>
              <div>${details.map(e => `${esc(map.get(e.source === String(this._selected).toUpperCase() ? e.target : e.source)?.name || (e.source === this._selected ? e.target : e.source))} · ${esc(e.evidence)}${e.port ? " · "+esc(e.port) : ""}`).join("<hr>") || (selectedConnection ? `${esc(selectedConnection.confirmed ? "Direkt verbunden mit" : "Erreichbar über")} ${esc(selectedConnection.name)} (${esc(selectedConnection.evidence)})` : "Keine Zuordnung vorhanden")}</div>
            </section>` : ""}
-          <details class="fnm-devices"><summary>Endgeräte mit vorhandener Zuordnung (${linkedDevices.length})</summary><div class="fnm-grid">${deviceItems(linkedDevices)}</div></details>
+          <details class="fnm-devices"><summary>Endgeräte nach vorhandener Zuordnung (${linkedDevices.length})</summary><div class="fnm-grid">${deviceItems(linkedDevices)}</div></details>
           <details class="fnm-devices"><summary>Ohne vorhandene Zuordnung (${unassigned.length})</summary><div class="fnm-grid">${deviceItems(unassigned)}</div></details>
           ` : ""}
         </div>
