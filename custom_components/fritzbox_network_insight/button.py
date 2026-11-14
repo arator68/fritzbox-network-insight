@@ -11,6 +11,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .router_device import router_device_info, router_mac, prune_router_host_discovery
 from .coordinator import FritzBoxDataUpdateCoordinator
 from .discovery.manual import ManualDiscoveryRunner
 from .discovery.ssdp import SsdpDiscoveryAdapter
@@ -48,11 +49,14 @@ async def async_setup_entry(
         SsdpDiscoveryAdapter(),
         SnmpDiscoveryAdapter(entry.options.get('snmp_devices', {})),
     ))
+    router = router_mac(coordinator, entry)
+    prune_router_host_discovery(hass, coordinator, entry)
     known_macs: set[str] = set()
     buttons: list[ButtonEntity] = [DiscoverAllButton(coordinator, entry, runner)]
     for mac, host in sorted((coordinator.data or {}).items()):
-        _migrate_discovery_button(hass, entry, mac, host)
-        buttons.append(DiscoverHostButton(coordinator, entry, runner, mac))
+        if mac != router:
+            _migrate_discovery_button(hass, entry, mac, host)
+            buttons.append(DiscoverHostButton(coordinator, entry, runner, mac))
         known_macs.add(mac)
     async_add_entities(buttons)
 
@@ -61,10 +65,13 @@ async def async_setup_entry(
         new_buttons: list[ButtonEntity] = []
         for mac in sorted((coordinator.data or {})):
             if mac not in known_macs:
+                known_macs.add(mac)
+                if mac == router_mac(coordinator, entry):
+                    prune_router_host_discovery(hass, coordinator, entry)
+                    continue
                 _migrate_discovery_button(
                     hass, entry, mac, (coordinator.data or {})[mac]
                 )
-                known_macs.add(mac)
                 new_buttons.append(DiscoverHostButton(coordinator, entry, runner, mac))
         if new_buttons:
             async_add_entities(new_buttons)
@@ -90,10 +97,7 @@ class DiscoverAllButton(
         super().__init__(coordinator)
         self._runner = runner
         self._attr_unique_id = f"{entry.entry_id}_manual_discovery_all"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=f"FRITZ!Box {entry.data.get('host', '')}",
-        )
+        self._attr_device_info = router_device_info(coordinator, entry)
 
     async def async_press(self) -> None:
         """Perform discovery only on explicit button press."""

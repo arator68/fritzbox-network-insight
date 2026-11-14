@@ -12,6 +12,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .router_device import router_device_info, router_mac, prune_router_host_discovery
 from .coordinator import FritzBoxDataUpdateCoordinator
 from .entity_id_migration import (
     migrate_legacy_status_entity_id,
@@ -20,6 +21,7 @@ from .entity_id_migration import (
 from .discovery_result import ManualDiscoveryResultSensor
 from .wlan_device_attributes import wlan_details_attribute
 from .connection_details import connection_details
+from .device_connection_sensors import CONNECTION_FIELDS, FritzBoxDeviceConnectionSensor
 from .wlan_metric_sensors import WLAN_METRICS, metric_observation
 from .wlan_connection_metadata import connection_metadata
 
@@ -36,11 +38,50 @@ async def async_setup_entry(
 ) -> None:
     """Create the overview sensor and one status sensor per discovered MAC."""
     coordinator: FritzBoxDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+    router = router_mac(coordinator, entry)
+    prune_router_host_discovery(hass, coordinator, entry)
     known_macs: set[str] = set()
+    registered_connection_sensors: set[tuple[str, str]] = set()
+
+    def _connection_entities(mac: str) -> list[SensorEntity]:
+        result: list[SensorEntity] = []
+        host = (coordinator.data or {}).get(mac)
+        fields = (
+            ("type",) if _is_wlan(host) else CONNECTION_FIELDS
+        )
+        for field in fields:
+            identity = (mac, field)
+            if identity not in registered_connection_sensors:
+                registered_connection_sensors.add(identity)
+                result.append(FritzBoxDeviceConnectionSensor(coordinator, mac, field))
+        return result
+
     wlan_macs: set[str] = set()
     registered_wlan_metrics: set[tuple[str, str]] = set()
     registered_wlan_metadata: set[tuple[str, str]] = set()
     registry = er.async_get(hass)
+    # Remove redundant general connection sensors from WLAN devices.
+    # The WLAN-specific peer sensor remains the single source for its parent.
+    # Stable IDs are recreated if a device later becomes Ethernet.
+    def _prune_wlan_lan_sensors() -> None:
+        for registered in list(er.async_entries_for_config_entry(registry, entry.entry_id)):
+            if registered.domain != "sensor" or registered.platform != DOMAIN:
+                continue
+            unique_id = registered.unique_id
+            for field in ("switch_port", "port_speed", "peer", "evidence"):
+                suffix = f"_connection_{field}"
+                if not unique_id.startswith("host_") or not unique_id.endswith(suffix):
+                    continue
+                compact_mac = unique_id[len("host_"):-len(suffix)]
+                if len(compact_mac) != 12:
+                    continue
+                mac = ":".join(compact_mac[i:i+2] for i in range(0, 12, 2)).upper()
+                if _is_wlan((coordinator.data or {}).get(mac)):
+                    registry.async_remove(registered.entity_id)
+                    registered_connection_sensors.discard((mac, field))
+                break
+
+    _prune_wlan_lan_sensors()
     obsolete = ("mesh_channel", "mesh_peer_channel_width", "mesh_signal_rx_raw")
     for registered in list(er.async_entries_for_config_entry(registry, entry.entry_id)):
         if registered.domain == "sensor" and registered.platform == DOMAIN and any(
@@ -134,7 +175,9 @@ async def async_setup_entry(
     ]
     for mac in sorted((coordinator.data or {}).keys()):
         entities.append(FritzBoxHostStatusSensor(coordinator, entry, mac))
-        entities.append(ManualDiscoveryResultSensor(coordinator, entry, mac))
+        entities.extend(_connection_entities(mac))
+        if mac != router:
+            entities.append(ManualDiscoveryResultSensor(coordinator, entry, mac))
         if _is_wlan((coordinator.data or {}).get(mac)):
             entities.extend(_wlan_entities(mac))
             entities.extend(_wlan_metadata_entities(mac))
@@ -145,6 +188,7 @@ async def async_setup_entry(
     @callback
     def _add_new_hosts() -> None:
         """Add entities for devices first seen during a later scan."""
+        _prune_wlan_lan_sensors()
         new_entities: list[SensorEntity] = []
         for mac in sorted((coordinator.data or {}).keys()):
             if mac not in known_macs:
@@ -172,7 +216,9 @@ async def async_setup_entry(
                 )
                 known_macs.add(mac)
                 new_entities.append(FritzBoxHostStatusSensor(coordinator, entry, mac))
-                new_entities.append(ManualDiscoveryResultSensor(coordinator, entry, mac))
+                new_entities.extend(_connection_entities(mac))
+                if mac != router_mac(coordinator, entry):
+                    new_entities.append(ManualDiscoveryResultSensor(coordinator, entry, mac))
             if mac not in wlan_macs and _is_wlan((coordinator.data or {}).get(mac)):
                 wlan_macs.add(mac)
                 new_entities.extend(_wlan_entities(mac))
@@ -309,13 +355,7 @@ class FritzBoxDeviceCountSensor(
     ) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{entry.entry_id}_device_count"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=f"FRITZ!Box {entry.data.get('host', '')}",
-            manufacturer="AVM",
-            model="FRITZ!Box",
-            configuration_url=f"http://{entry.data.get('host', '')}",
-        )
+        self._attr_device_info = router_device_info(coordinator, entry)
 
     @property
     def native_value(self) -> int:
@@ -497,12 +537,7 @@ class FritzBoxTopologySensor(
     ) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{entry.entry_id}_lldp_topology"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=f"FRITZ!Box {entry.data.get('host', '')}",
-            manufacturer="AVM",
-            model="FRITZ!Box",
-        )
+        self._attr_device_info = router_device_info(coordinator, entry)
 
     @property
     def native_value(self) -> int:
@@ -531,12 +566,7 @@ class FritzBoxFdbTopologySensor(
     ) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{entry.entry_id}_fdb_topology"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=f"FRITZ!Box {entry.data.get('host', '')}",
-            manufacturer="AVM",
-            model="FRITZ!Box",
-        )
+        self._attr_device_info = router_device_info(coordinator, entry)
 
     @property
     def native_value(self) -> int:
@@ -587,12 +617,7 @@ class FritzBoxCombinedTopologySensor(
     ) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{entry.entry_id}_combined_topology"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=f"FRITZ!Box {entry.data.get('host', '')}",
-            manufacturer="AVM",
-            model="FRITZ!Box",
-        )
+        self._attr_device_info = router_device_info(coordinator, entry)
 
     @property
     def native_value(self) -> int:

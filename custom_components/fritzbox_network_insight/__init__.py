@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 
 from .const import DOMAIN
+from .router_device import migrate_router_device
 from .coordinator import FritzBoxDataUpdateCoordinator
 from .device_diagnostics import device_details_snapshot
 from .fritzbox_client import FritzBoxClient
@@ -34,6 +35,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_load_identifications()
     await coordinator.async_load_topology()
     await coordinator.async_load_fdb_topology()
+    await coordinator.async_load_switch_port_telemetry()
     await coordinator.async_load_manual_links()
     await coordinator.async_load_port_history()
     # IEEE vendor CSV must be read outside the HA event loop.
@@ -259,6 +261,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         len(coordinator.data or {}),
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    migrated = migrate_router_device(hass, coordinator, entry)
+    if migrated:
+        _LOGGER.info("Moved %d central router entities to physical FRITZ!Box device", migrated)
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True
 

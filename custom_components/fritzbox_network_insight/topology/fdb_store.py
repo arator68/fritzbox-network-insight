@@ -1,12 +1,15 @@
 """Bounded persistent last-manual FDB observations, separate from LLDP links."""
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from .lldp_matcher import normalize_mac
+
+_LOGGER = logging.getLogger(__name__)
 
 MAX_SOURCES = 16
 MAX_ENTRIES = 128
@@ -48,7 +51,17 @@ class FdbTopologyStore:
 
     async def async_load(self) -> dict[str, list[dict[str, str | None]]]:
         data = await self._store.async_load()
-        return self.sanitize(data.get("observations")) if isinstance(data, dict) else {}
+        raw = data.get("observations") if isinstance(data, dict) else None
+        restored = self.sanitize(raw)
+        raw_sources = len(raw) if isinstance(raw, dict) else 0
+        raw_entries = sum(len(v) for v in raw.values() if isinstance(v, list)) if isinstance(raw, dict) else 0
+        kept_entries = sum(len(v) for v in restored.values())
+        _LOGGER.warning(
+            "FDB store load: payload=%s, raw_sources=%d, raw_entries=%d, kept_sources=%d, kept_entries=%d, filtered_entries=%d",
+            type(data).__name__ if data is not None else "None",
+            raw_sources, raw_entries, len(restored), kept_entries, raw_entries - kept_entries,
+        )
+        return restored
 
     async def async_save(self, observations: dict[str, list[dict[str, str | None]]]) -> None:
         await self._store.async_save({"observations": self.sanitize(observations)})

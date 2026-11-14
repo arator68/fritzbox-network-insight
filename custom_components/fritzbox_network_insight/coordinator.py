@@ -36,6 +36,7 @@ from .topology.model import build_lldp_links, topology_snapshot
 from .topology.store import TopologyStore
 from .topology.fdb_model import build_fdb_observations
 from .topology.fdb_store import FdbTopologyStore
+from .switch_port_telemetry_store import SwitchPortTelemetryStore
 from .topology.combined import build_combined_topology
 from .topology.internal_graph import build_internal_graph
 from .topology.manual_store import ManualTopologyStore, sanitize_links
@@ -61,6 +62,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
     ) -> None:
         self.client = client
         self.discovery_results: dict[str | None, dict[str, Any]] = {}
+        self.switch_port_telemetry_store = SwitchPortTelemetryStore(hass, entry.entry_id)
         self.device_identifications: dict[str, dict[str, str]] = {}
         self.device_details: dict[str, DeviceDetails] = {}
         self.identification_store = IdentificationStore(hass, entry.entry_id)
@@ -112,6 +114,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         """Restore last-observed LLDP links; not a live connectivity claim."""
         try:
             self.topology_observations = await self.topology_store.async_load()
+            _LOGGER.info("Restored LLDP topology: %d sources, %d links", len(self.topology_observations), sum(len(v) for v in self.topology_observations.values()))
         except Exception:
             _LOGGER.exception("Could not load saved LLDP topology")
             self.topology_observations = {}
@@ -120,9 +123,17 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         """Restore last manual FDB observations, not live connectivity."""
         try:
             self.fdb_observations = await self.fdb_topology_store.async_load()
+            _LOGGER.info("Restored FDB topology: %d sources, %d observations", len(self.fdb_observations), sum(len(v) for v in self.fdb_observations.values()))
         except Exception:
             _LOGGER.exception("Could not load saved FDB topology")
             self.fdb_observations = {}
+
+    async def async_load_switch_port_telemetry(self) -> None:
+        """Restore last observed port measurements before the first host scan."""
+        try:
+            self.discovery_results.update(await self.switch_port_telemetry_store.async_load())
+        except Exception:
+            _LOGGER.exception("Could not load saved switch port telemetry")
 
     async def async_load_port_history(self) -> None:
         """Restore last-seen port records without claiming devices are online."""
@@ -321,9 +332,45 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             "last_run": datetime.now(timezone.utc).isoformat(),
         }
         # Manual SNMP discovery runs independently of the periodic host scan.
-        # Refresh derived port evidence immediately from the new observations.
-        # The next host scan will rebuild the same evidence from scratch.
+        # Keep only complete, verified port telemetry for restart recovery.
+        # Persisted readings are last-observed, never current link assertions.
+        if (mac is not None and "snmp" in protocols
+                and result_details.get("port_telemetry_status") == "ok"):
+            saved = self.switch_port_telemetry_store.sanitize({
+                mac: self.discovery_results[mac],
+            })
+            if saved:
+                try:
+                    existing = await self.switch_port_telemetry_store.async_load()
+                    existing.update(saved)
+                    await self.switch_port_telemetry_store.async_save(existing)
+                except Exception:
+                    _LOGGER.exception("Could not persist switch port telemetry")
+        # A manual SNMP scan must publish the switch's own IF-MIB telemetry
+        # immediately. Otherwise LLDP connection sensors see stale device details
+        # until the next periodic host scan.
         if self.device_details and mac is not None:
+            details = self.device_details.get(mac)
+            if (
+                details is not None
+                and "snmp" in protocols
+                and result_details.get("port_telemetry_status") == "ok"
+            ):
+                fresh = DeviceDetails(mac=mac)
+                add_snmp_details(fresh, self.discovery_results[mac])
+                # Replace only the refreshed IF-MIB observations, avoiding
+                # duplicate readings and preserving all other detail sources.
+                for key in (
+                    "snmp_port_telemetry",
+                    "snmp_port_telemetry_status",
+                    "snmp_port_telemetry_reason",
+                    "snmp_port_telemetry_columns",
+                ):
+                    if key in fresh.observations:
+                        details.observations[key] = fresh.observations[key]
+                    else:
+                        details.observations.pop(key, None)
+            # Refresh FDB reachability independently of direct LLDP links.
             add_lan_port_details(
                 self.device_details, self.discovery_results, self.fdb_observations
             )
@@ -344,12 +391,14 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             async with self._topology_save_lock:
                 try:
                     await self.fdb_topology_store.async_save(self.fdb_observations)
+                    _LOGGER.info("Saved FDB topology: %d sources, %d observations", len(self.fdb_observations), sum(len(v) for v in self.fdb_observations.values()))
                 except Exception:
                     _LOGGER.exception("Could not persist FDB topology")
         if topology_changed:
             async with self._topology_save_lock:
                 try:
                     await self.topology_store.async_save(self.topology_observations)
+                    _LOGGER.info("Saved LLDP topology: %d sources, %d links", len(self.topology_observations), sum(len(v) for v in self.topology_observations.values()))
                 except Exception:
                     _LOGGER.exception("Could not persist LLDP topology")
         if changed:
@@ -388,6 +437,20 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                         continue
                     details = adapter.results.get(mac, {})
                     if details.get("fdb_status") != "ok" or details.get("fdb_truncated") != "false":
+                        continue
+                    # An empty automatic walk must not erase previously verified
+                    # observations while Home Assistant is starting.
+                    try:
+                        fresh_fdb = json.loads(details.get("fdb_entries", "null"))
+                    except (TypeError, ValueError):
+                        continue
+                    if not isinstance(fresh_fdb, list):
+                        continue
+                    if not fresh_fdb and self.fdb_observations.get(mac):
+                        _LOGGER.warning(
+                            "Preserving %d restored FDB observations after an empty automatic SNMP walk",
+                            len(self.fdb_observations[mac]),
+                        )
                         continue
                     await self.async_record_manual_discovery(
                         mac, status="responded", requested=1, checked=1,
