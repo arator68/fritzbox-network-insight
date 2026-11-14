@@ -277,3 +277,16 @@ Server-3
 - **Merge-Commit:** `b9d5611cd91c15f4dfadbbb547b59eee03880e30`. `main` wurde nicht verändert.
 - Die in Abschnitt 20 beschriebene WLAN-Sensorbereinigung, quellenbewusste Fallbacks, Signalstärke mit bedingter Einheit dBm und die Mesh-Gegenstellenkanalbreite sind nun Bestandteil von `develop`.
 - **Nächster Einstieg:** Für neue Arbeiten von `develop` ausgehen. Offen bleiben die genaue RX-/TX-Richtungssemantik, die Einheit des separaten Sendesignals sowie weitere WLAN-Metadaten nur bei nachgewiesener AVM-Datenquelle. Topologie nicht ohne gesonderten Auftrag ändern.
+
+
+## 22. 2026-11-14 – Geräteverbindungen, Router-Konsolidierung und SNMP-Portgeschwindigkeit
+
+- Arbeitsbranch `feature/device-connection-sensors`, PR #43 gegen `develop`. Der produktive Home-Assistant-Test bestätigte die neuen separaten Verbindungssensoren für den primären Router.
+- Router-Geräteduplikat bereinigt: die zentralen Sensoren werden dem MAC-identifizierten physischen Router zugeordnet. Doppelte globale und routerspezifische Geräteerkennungs-Steuerelemente wurden entfernt; die globalen Steuerelemente bleiben am Router.
+- **LLDP-Verbindungsnachweis:** Primärer Router `04:B4:FE:18:79:65` ist direkt mit SG3428 `D4:D6:DF:0E:1B:54` an Port `gigabitEthernet 1/0/1` verbunden. Home Assistant zeigt `Direkt verbunden mit: SG3428-koch-local`, `Switch-Port: 1`, `Verbindungsnachweis: lldp_last_observed`, `Verbindungstyp: lan`.
+- **SNMP IF-MIB:** Reale Diagnose am SG3428 zeigte `port_telemetry_status: ok`, `if_index: 49153`, `interface_name: gigabitEthernet 1/0/1`, `reported_speed_mbps: 1000`, `speed_source: ifHighSpeed`, `oper_status: up`. LLDP bestätigt die direkte Verbindung; FDB ist nur zusätzlicher Erreichbarkeitsnachweis, kein Ersatz für LLDP.
+- Die SNMP-Porttelemetrie wird nach manueller Geräteerkennung unmittelbar in das interne Gerätemodell übernommen und mit SNMP-Quellenkennzeichnung persistent gespeichert bzw. nach Neustart wiederhergestellt. Der Sensor für die Switch-Portgeschwindigkeit gleicht den eindeutigen LLDP-Switchport mit den tatsächlich beobachteten IF-MIB-Messwerten ab; keine erfundene Geschwindigkeit.
+- **HA-Praxistest erfolgreich:** Am 14.11.2026 zeigt die FRITZ!Box `Switch-Portgeschwindigkeit: 1.000 Mbit/s` zusammen mit den oben genannten Verbindungsdaten.
+- **GitHub-CI:** Für Commit `8f1af1c17e9a97f214daf733841e1eb777fc51be` waren `Validate #866` und `Internal topology tests #169` erfolgreich.
+- **Unverändert:** AVM-Mesh als Topologiegrundlage, keine hartcodierten Verbindungen, LLDP nur bei eindeutigem Nachweis, FDB nicht als direkter Kabelnachweis, WLAN-Geräte ohne LAN-Portgeschwindigkeit. Der bereits zurückgestellte Hinweis zur Größe einzelner Discovery-Attribute (16 KB) ist nicht Bestandteil dieser Änderung.
+- **Nächster Schritt:** Änderungen nach `develop` zusammenführen; `main` unverändert lassen. Für Folgearbeiten von `develop` ausgehen.
