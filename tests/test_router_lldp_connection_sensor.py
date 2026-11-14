@@ -29,6 +29,9 @@ class RouterLldpSensorTests(unittest.TestCase):
         module("homeassistant.helpers")
         module("homeassistant.helpers.device_registry", DeviceInfo=dict)
         class CoordinatorEntity:
+            def __class_getitem__(cls, item):
+                return cls
+
             def __init__(self, coordinator):
                 self.coordinator = coordinator
         module("homeassistant.helpers.update_coordinator", CoordinatorEntity=CoordinatorEntity)
