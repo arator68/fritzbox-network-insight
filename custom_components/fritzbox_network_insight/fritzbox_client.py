@@ -41,6 +41,7 @@ class FritzBoxClient:
         self.password = password
         self.timeout = timeout
         self.router_metrics: dict[str, Any] = {}
+        self.router_model: str | None = None
 
     def get_hosts(self) -> list[dict[str, Any]]:
         """Connect and return normalized hosts."""
@@ -52,6 +53,9 @@ class FritzBoxClient:
                 timeout=self.timeout,
             )
             raw_hosts = FritzHosts(connection).get_hosts_attributes()
+            model = getattr(connection, "modelname", None)
+            if isinstance(model, str) and model.strip():
+                self.router_model = model.strip()
             # Optional read-only monitoring; failures must not affect host scans.
             self.router_metrics = read_router_metrics(connection)
         except (FritzAuthorizationError, FritzSecurityError) as err:
