@@ -68,3 +68,29 @@ def migrate_router_device(hass, coordinator, entry: ConfigEntry) -> int:
     ):
         devices.async_remove_device(old.id)
     return moved
+
+
+def prune_router_host_discovery(hass, coordinator, entry: ConfigEntry) -> int:
+    """Remove only obsolete per-host discovery controls for the configured router.
+
+    Global discovery remains available; discovery for every other MAC is retained.
+    """
+    mac = router_mac(coordinator, entry)
+    if mac is None:
+        return 0
+    compact = mac.replace(":", "").lower()
+    unique_ids = {
+        f"host_{compact}_manual_discovery",
+        f"host_{compact}_manual_discovery_result",
+    }
+    registry = er.async_get(hass)
+    removed = 0
+    for entity in list(er.async_entries_for_config_entry(registry, entry.entry_id)):
+        if (
+            entity.platform == DOMAIN
+            and entity.unique_id in unique_ids
+            and entity.domain in ("button", "sensor")
+        ):
+            registry.async_remove(entity.entity_id)
+            removed += 1
+    return removed
