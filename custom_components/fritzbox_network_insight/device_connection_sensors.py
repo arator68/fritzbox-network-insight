@@ -48,6 +48,16 @@ class FritzBoxDeviceConnectionSensor(
             self.coordinator.manual_links,
         )
         kind = connection.get("connection_type")
+        # The router itself may lack an interface_type in the TR-064 host list.
+        # Only a unique, explicitly confirmed LLDP link can establish LAN.
+        direct = connection.get("connections") or []
+        link = direct[0] if len(direct) == 1 else None
+        if (
+            kind == "unknown"
+            and link is not None
+            and link.get("evidence") == "lldp_last_observed"
+        ):
+            kind = "lan"
         if self._field == "type":
             return (kind if kind in ("lan", "wlan") else None), {}
         if kind != "lan":
@@ -55,11 +65,8 @@ class FritzBoxDeviceConnectionSensor(
 
         # LLDP confirms direct links; FDB identifies reachability only.
         # Never label FDB as proof of a physical cable.
-        direct = connection.get("connections") or []
         reachable = connection.get("reachable_via_switch_ports") or []
         fdb = reachable[0] if len(reachable) == 1 else None
-        link = direct[0] if len(direct) == 1 else None
-
         if self._field in ("peer", "evidence"):
             if link is not None:
                 if self._field == "evidence":
@@ -86,6 +93,30 @@ class FritzBoxDeviceConnectionSensor(
                 "evidence": "fdb_reachable_via_port",
                 "direct_connection": "unconfirmed",
             }
+
+        # The peer-side LLDP port is usable only if the peer is a switch.
+        # LLDP does not itself report port speed.
+        if link is not None and link.get("evidence") == "lldp_last_observed":
+            snapshot = self.coordinator.get_combined_topology_snapshot()
+            peer_mac = link.get("connected_to_mac")
+            peer_is_switch = any(
+                isinstance(node, dict)
+                and str(node.get("mac") or "").upper() == str(peer_mac or "").upper()
+                and str(node.get("device_type") or "").lower() == "switch"
+                for node in snapshot.get("nodes", [])
+            )
+            if peer_is_switch:
+                peer_port = link.get("peer_port")
+                if self._field == "switch_port" and peer_port:
+                    match = re.search(r"(?:/|\\b)(\\d+)$", str(peer_port))
+                    return (match.group(1) if match else str(peer_port)), {
+                        "switch_mac": peer_mac,
+                        "interface_name": peer_port,
+                        "evidence": "lldp_last_observed",
+                        "direct_connection": "confirmed",
+                    }
+                if self._field == "port_speed":
+                    return None, {"evidence": "lldp_last_observed"}
 
         # The port is the observed switch ingress, not necessarily a direct
         # endpoint cable. Require exactly one matching FDB observation.
