@@ -23,7 +23,7 @@ def connection_metadata(
         return {}
 
     result: dict[str, dict[str, Any]] = {
-        "role": {"value": "WLAN-Client", "source": "host_interface_type"}
+        "role": {"value": "Endgerät", "source": "host_interface_type"}
     }
 
     # Prefer an explicit band observation. Channel fallback is allowed only
