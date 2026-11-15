@@ -12,7 +12,7 @@ from .const import DOMAIN
 from .connection_details import connection_details
 from .coordinator import FritzBoxDataUpdateCoordinator
 
-CONNECTION_FIELDS = ("type", "peer", "switch_port", "port_speed", "evidence")
+CONNECTION_FIELDS = ("role", "type", "peer", "switch_port", "port_speed", "evidence")
 
 
 class FritzBoxDeviceConnectionSensor(
@@ -42,6 +42,9 @@ class FritzBoxDeviceConnectionSensor(
         host = (self.coordinator.data or {}).get(self._mac)
         if host is None:
             return None, {}
+        if self._field == "role":
+            kind = str(host.get("device_type") or "").strip().lower()
+            return {"router": "Router", "switch": "Switch", "repeater": "Repeater", "access_point": "Access Point", "access point": "Access Point"}.get(kind, "Endgerät"), {}
         connection = connection_details(
             self._mac, host,
             self.coordinator.get_combined_topology_snapshot(),
