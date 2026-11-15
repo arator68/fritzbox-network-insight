@@ -1,7 +1,7 @@
 /* Network Insight – Network Center view. Read-only; no topology inference. */
 class FritzNetworkInsightMapCard extends HTMLElement {
-  static getStubConfig(){return {design:"lcars",height:620,refresh_seconds:60};}
-  setConfig(config){this.config={design:"lcars",height:620,refresh_seconds:60,...config};this._data=null;this._error="";this._search="";this._filter="all";this._expanded=new Set();this._showMap=false;}
+  static getStubConfig(){return {design:"modern-dark",height:620,refresh_seconds:60};}
+  setConfig(config){this.config={design:"modern-dark",height:620,refresh_seconds:60,...config};this._data=null;this._error="";this._search="";this._filter="all";this._expanded=new Set();this._showMap=false;this._selectedComponent=null;}
   connectedCallback(){this._active=true;this._load();this._timer=setInterval(()=>this._load(),Math.max(15,Number(this.config?.refresh_seconds)||60)*1000);}
   disconnectedCallback(){this._active=false;clearInterval(this._timer);}
   set hass(hass){this._hass=hass;if(this._active&&!this._data&&!this._loading)this._load();}
@@ -23,7 +23,7 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     const type=String(n.device_type||"").toLowerCase(),role=String(n.mesh_role||"").toLowerCase();
     if(type.includes("router")||role.includes("router")||role.includes("master"))return "router";
     if(type.includes("switch"))return "switch";
-    if(type.includes("repeater")||role.includes("repeater"))return "repeater";
+    if(type.includes("repeater")||role.includes("repeater")||role.includes("mesh")||type.includes("fritzbox")&&role.includes("slave"))return "repeater";
     return "device";
   }
   _connection(n){
@@ -44,7 +44,7 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     return null;
   }
   _view(){
-    const nodes=(this._data?.nodes||[]).filter(n=>n.known_host===true);
+    const nodes=(this._data?.nodes||[]).filter(n=>n.known_host===true).map(n=>{const id=String(n.mac||n.id||"").replace(/:/g,"").toLowerCase();const a=this._hass?.states?.["sensor.fritzbox_network_insight_"+id+"_status"]?.attributes||{};return {...n,device_type:a.device_type||n.device_type,mesh_role:a.mesh_role||n.mesh_role,name:a.dns_name||n.name,ip_address:a.ip_address||n.ip_address};});
     const byId=new Map(nodes.map(n=>[this._id(n),n]));
     const byName=new Map(nodes.map(n=>[String(n.name||"").trim().toLowerCase(),n]));
     const groups=new Map(),assigned=new Set();
@@ -52,7 +52,7 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     for(const c of components)groups.set(this._id(c),[]);
     for(const n of nodes){
       if(this._kind(n)!=="device")continue;
-      const rel=this._connection(n);
+      const rel=this._connection(n)||(()=>{const key=String(n.mac||n.id||"").replace(/:/g,"").toLowerCase();const p=this._hass?.states?.["sensor.fritzbox_network_insight_"+key+"_wlan_connection_peer"];return p&&!["unknown","unavailable","none",""].includes(String(p.state).toLowerCase())?{name:String(p.state),mac:String(p.attributes?.connected_to_mac||"").toUpperCase()}:null;})();
       let parent=rel&&(byId.get(rel.mac)||byName.get(rel.name.trim().toLowerCase()));
       if(!parent){
         const edge=(this._data.edges||[]).find(e=>e.target===this._id(n)&&groups.has(String(e.source).toUpperCase())&&(e.kind==="mesh_wlan"&&e.evidence==="avm_mesh"||e.kind==="confirmed_lan"&&e.physical_link_confirmed===true));
@@ -61,6 +61,43 @@ class FritzNetworkInsightMapCard extends HTMLElement {
       if(parent&&groups.has(this._id(parent))){groups.get(this._id(parent)).push(n);assigned.add(this._id(n));}
     }
     return {nodes,components,groups,other:nodes.filter(n=>this._kind(n)==="device"&&!assigned.has(this._id(n)))};
+  }
+
+  _mapHtml(view){
+    const esc=v=>this._esc(v),{nodes,components,groups,other}=view;
+    const ids=new Set(components.map(n=>this._id(n))),byId=new Map(components.map(n=>[this._id(n),n]));
+    const links=[],seen=new Set();
+    const add=(a,b)=>{a=String(a||"").toUpperCase();b=String(b||"").toUpperCase();if(!ids.has(a)||!ids.has(b)||a===b||seen.has(a+"|"+b))return;seen.add(a+"|"+b);links.push([a,b]);};
+    for(const e of this._data?.edges||[]){
+      if(e.kind==="mesh_wlan"&&e.evidence==="avm_mesh"||e.kind==="confirmed_lan"&&e.physical_link_confirmed===true)add(e.source,e.target);
+    }
+    for(const n of components){
+      const r=this._connection(n);
+      if(!r)continue;
+      const parent=components.find(c=>this._id(c)===r.mac||String(c.name||"").toLowerCase()===r.name.toLowerCase());
+      if(parent)add(this._id(parent),this._id(n));
+    }
+    const selected=byId.get(this._selectedComponent);
+    const root=components.find(n=>this._kind(n)==="router")||components[0];
+    const parent=new Map(),children=new Map(components.map(n=>[this._id(n),[]]));
+    const queue=root?[this._id(root)]:[],visited=new Set(queue);
+    while(queue.length){const id=queue.shift();for(const [a,b] of links){const other=a===id?b:b===id?a:null;if(!other||visited.has(other))continue;visited.add(other);parent.set(other,id);children.get(id).push(other);queue.push(other);}}
+    const roots=[...(root?[this._id(root)]:[]),...components.map(n=>this._id(n)).filter(id=>!visited.has(id))];
+    const leaf=new Map(),depth=new Map();let cursor=0;
+    const walk=(id,d)=>{depth.set(id,d);const kids=children.get(id)||[];if(!kids.length)leaf.set(id,cursor++);else kids.forEach(k=>walk(k,d+1));};
+    roots.forEach(id=>walk(id,0));
+    const w=Math.max(900,roots.length*220,Math.max(1,cursor)*230),positions=new Map();
+    const place=id=>{const kids=children.get(id)||[];const x=kids.length?kids.map(place).reduce((a,b)=>a+b,0)/kids.length:115+(w-230)*(leaf.get(id)+.5)/Math.max(1,cursor);positions.set(id,{x,y:34+(depth.get(id)||0)*185});return x;};
+    roots.forEach(place);
+    const h=Math.max(410,Math.max(0,...depth.values())*185+170);
+    const node=n=>{const id=this._id(n),p=positions.get(id),kind=this._kind(n),count=(groups.get(id)||[]).length;
+      return '<button class="fnc-map-node '+kind+'" data-component="'+esc(id)+'" style="left:'+(p.x-100)+'px;top:'+p.y+'px"><span class="fnc-map-icon">'+({router:"◉",switch:"▦",repeater:"⌁"}[kind]||"●")+'</span><span><strong>'+esc(n.name||n.mac)+'</strong><small>'+esc(kind)+' · '+esc(n.ip_address||"")+'</small><small>'+count+' Endgeräte · '+(children.get(id)||[]).length+' Komponenten</small></span><b>›</b></button>';
+    };
+    const line=([a,b])=>{if(parent.get(b)!==a&&parent.get(a)!==b)return "";const p=positions.get(a),q=positions.get(b);return '<path d="M '+p.x+' '+(p.y+95)+' C '+p.x+' '+(p.y+140)+', '+q.x+' '+(q.y-45)+', '+q.x+' '+q.y+'" />';};
+    const stats='<div class="fnc-stats">'+[['Geräte gesamt',nodes.length],['Netzwerkkomponenten',components.length],['Online',nodes.filter(n=>this._online(n)===true).length],['Offline',nodes.filter(n=>this._online(n)===false).length]].map(([k,v])=>'<div class="fnc-stat"><strong>'+v+'</strong><small>'+k+'</small></div>').join("")+'</div>';
+    const content=selected?'<button data-map-back>← Gesamtübersicht</button><h3>'+esc(selected.name||selected.mac)+'</h3><div class="fnc-other">'+(groups.get(this._id(selected))||[]).map(n=>'<div class="fnc-device">'+esc(n.name||n.mac)+'</div>').join("")+'</div>':
+      '<h3>GRAFISCHE NETZWERKTOPOLOGIE – KNOTEN AUSWÄHLEN FÜR DETAILS</h3><div class="fnc-map-scroll"><div class="fnc-map-canvas" style="width:'+w+'px;height:'+h+'px"><svg viewBox="0 0 '+w+' '+h+'">'+links.map(line).join("")+'</svg>'+components.map(node).join("")+'</div></div><h3>Weitere / nicht zugeordnete Geräte: '+other.length+'</h3>';
+    return '<div class="fnc-map-head">Netzwerk-Gesamtübersicht · Datenquelle: Network Insight</div>'+stats+content;
   }
   render(){
     if(!this.config)return;
@@ -72,7 +109,7 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     const shown=n=>matches(n)&&filter(n);
     const online=nodes.filter(n=>this._online(n)===true).length;
     const offline=nodes.filter(n=>this._online(n)===false).length;
-    const connectionCount=[...groups.values()].reduce((sum,a)=>sum+a.length,0);
+    const connectionCount=nodes.filter(n=>this._kind(n)!=="router"&&this._connection(n)).length;
     const item=n=>'<button class="fnc-device" data-device="'+esc(this._id(n))+'"><span class="fnc-dot '+(this._online(n)===true?"on":"")+'"></span><span class="fnc-device-text"><strong>'+esc(n.name||n.mac)+'</strong><small>'+esc(this._kind(n)==="device"?"Endgerät":this._kind(n))+' · '+esc(n.ip_address||"")+'</small></span></button>';
     const tiles=components.filter(c=>filter(c)||this._filter==="device").map(c=>{
       const devices=groups.get(this._id(c))||[];
@@ -92,7 +129,7 @@ class FritzNetworkInsightMapCard extends HTMLElement {
       (this._error?'<p class="fnc-error">'+esc(this._error)+'</p>':"")+
       (!data?'<p>Topologiedaten werden geladen …</p>':
       '<div class="fnc-controls"><input class="fnc-search" type="search" placeholder="Gerät, IP oder MAC suchen ..." value="'+esc(this._search)+'"><select class="fnc-filter"><option value="all">Alle Geräte</option><option value="router">Router</option><option value="switch">Switches</option><option value="repeater">Repeater</option><option value="device">Endgeräte</option></select></div>'+
-      (this._showMap?'<p class="fnc-info">Die grafische Netzwerk-Map wird in einem späteren Schritt angepasst. Die Network-Center-Ansicht bleibt unverändert verfügbar.</p>':
+      (this._showMap?this._mapHtml(view):
       '<h3>NETZWERKKOMPONENTEN UND DIREKT VERBUNDENE GERÄTE</h3><div class="fnc-groups">'+tiles+'</div><h3>WEITERE GERÄTE</h3><div class="fnc-other">'+otherVisible.map(item).join("")+'</div>')+
       '<footer>Datenquelle: sensor.netzwerk_topologie · Beziehungen werden ausschließlich aus den Sensorattributen übernommen.</footer>')+
       '</div></ha-card><style>'+
@@ -104,6 +141,8 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     if(select){select.value=this._filter;select.addEventListener("change",e=>{this._filter=e.target.value;this.render();});}
     this.querySelector(".fnc-map-toggle")?.addEventListener("click",()=>{this._showMap=!this._showMap;this.render();});
     this.querySelectorAll("[data-group]").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.group;if(this._expanded.has(id))this._expanded.delete(id);else this._expanded.add(id);this.render();}));
+    this.querySelectorAll("[data-component]").forEach(b=>b.addEventListener("click",()=>{this._selectedComponent=b.dataset.component;this.render();}));
+    this.querySelectorAll("[data-map-back]").forEach(b=>b.addEventListener("click",()=>{this._selectedComponent=null;this.render();}));
     this.querySelectorAll("[data-device]").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.device;const n=nodes.find(x=>this._id(x)===id);if(n){const event=new CustomEvent("hass-more-info",{bubbles:true,composed:true,detail:{entityId:"sensor.fritzbox_network_insight_"+String(n.mac||"").replace(/:/g,"").toLowerCase()+"_status"}});this.dispatchEvent(event);}}));
   }
 }
