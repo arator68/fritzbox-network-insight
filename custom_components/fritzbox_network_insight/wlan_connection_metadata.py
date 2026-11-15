@@ -11,6 +11,12 @@ from .device import normalize_mac
 from .device_details import DeviceDetails
 
 
+def _display_role(host: Mapping[str, Any]) -> str:
+    """Display the existing device classification, not the WLAN access method."""
+    kind = str(host.get("device_type") or "").strip().lower()
+    return {"router": "Router", "switch": "Switch", "repeater": "Repeater", "access_point": "Access Point", "access point": "Access Point"}.get(kind, "Endgerät")
+
+
 def connection_metadata(
     mac: str, host: Mapping[str, Any] | None, details: DeviceDetails | None,
     hosts: Mapping[str, Mapping[str, Any]], mesh_topology: Mapping[str, Any],
@@ -23,7 +29,7 @@ def connection_metadata(
         return {}
 
     result: dict[str, dict[str, Any]] = {
-        "role": {"value": "Endgerät", "source": "host_interface_type"}
+        "role": {"value": _display_role(host), "source": "device_type"}
     }
 
     # Prefer an explicit band observation. Channel fallback is allowed only
