@@ -87,8 +87,9 @@ class SnmpDiscoveryAdapter:
                 values = {str(oid): str(value) for oid, value in var_binds}
                 if not values:
                     return None
+                lldp_diagnostics: dict[str, Any] = {}
                 neighbors, fdb, ports = await asyncio.gather(
-                    async_read_lldp(engine, user, target),
+                    async_read_lldp(engine, user, target, lldp_diagnostics),
                     async_read_fdb(engine, user, target),
                     async_read_port_telemetry(engine, user, target),
                 )
@@ -99,6 +100,7 @@ class SnmpDiscoveryAdapter:
                 "sys_object_id": values.get(SYS_OBJECT_ID, ""),
                 "sys_name": values.get(SYS_NAME, ""),
                 "lldp_neighbor_count": str(len(neighbors)),
+                "lldp_diagnostics": json.dumps(lldp_diagnostics, ensure_ascii=False),
                 "lldp_neighbors": json.dumps(neighbors, ensure_ascii=False),
                 "fdb_status": fdb["status"],
                 "fdb_source": fdb["source"],
