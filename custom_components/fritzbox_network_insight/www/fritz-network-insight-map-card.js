@@ -487,7 +487,9 @@ class FritzNetworkCenterCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (this._active && !this._data && !this._loading) this._load();
-    if (this._data && !this._mapOpen) this.render();
+    // Home Assistant updates hass frequently. Do not rebuild the entire card on each update.
+    // The integration's topology_view response is the only source for card data.
+    if (this._data && !this.querySelector(".fnc-root")) this.render();
     if (this._mapOpen) this.querySelector("fritz-network-insight-topology-dialog")?.setAttribute("data-live", "true");
   }
   async _load() {
@@ -528,10 +530,11 @@ class FritzNetworkCenterCard extends HTMLElement {
         active: state?.state === "online" || n.online === true,
         status: state?.state || (n.online === true ? "online" : n.online === false ? "offline" : "unknown")};
     });
-    const edges = (this._data?.edges || []).filter(e =>
-      (e.kind === "mesh_wlan" && e.evidence === "avm_mesh") ||
-      (e.kind === "confirmed_lan" && e.physical_link_confirmed === true)
-    ).map(e => ({...e, source: String(e.source || "").toUpperCase(), target: String(e.target || "").toUpperCase()}));
+    // Use the relationships delivered by the integration without reclassifying
+    // evidence or computing additional topology links in the frontend.
+    const edges = (this._data?.edges || []).map(e => ({
+      ...e, source: String(e.source || "").toUpperCase(), target: String(e.target || "").toUpperCase()
+    }));
     const groups = nodes.filter(n => ["router","switch","repeater"].includes(n.kind)).map(n => ({
       parent_id: n.id,
       member_ids: edges.filter(e => e.source === n.id).map(e => e.target)
