@@ -121,6 +121,8 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     force(".fnc-stat",{"background-color":palette.background,color:palette.text,"border-color":palette.border});
     force(".fnc-stat strong,.fnc-group-head b",{"color":palette.accent});
     force(".fnc-group-head,.fnc-device,.fnc-search,.fnc-filter",{"background-color":palette.panel,color:palette.text,"border-color":palette.border});
+    force(".fnc-group-head strong,.fnc-device strong",{color:palette.text});
+    force(".fnc-group-head small,.fnc-device small",{color:palette.text==="\x231f2937"?"#526277":"#a6bce1"});
     force(".fnc-wrap h2,.fnc-wrap h3",{"color":heading});
     force(".fnc-map-toggle",{"background-color":palette.accent});
     force(".fnc-exact-result",{"background-color":palette.panel,"border-color":palette.border,color:palette.text});
