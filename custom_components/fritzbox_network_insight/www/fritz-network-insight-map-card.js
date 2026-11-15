@@ -24,10 +24,11 @@ class FritzNetworkInsightMapCard extends HTMLElement {
   _esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
   _id(n){return String(n.id||n.mac||"").toUpperCase();}
   _kind(n){
-    const type=String(n.device_type||"").toLowerCase(),role=String(n.mesh_role||"").toLowerCase(),name=String(n.name||"").toLowerCase();
-    if(type.includes("router")||role.includes("master"))return "router";
-    if(type.includes("switch")||/\b(?:sg\d{3,}|tl-sg\d+|switch)\b/i.test(name))return "switch";
-    if(type.includes("repeater")||role.includes("repeater")||role.includes("slave")||/repeater|fritz(?:box|\!box)?[ -]?\d{3,}/i.test(name))return "repeater";
+    // Device classification belongs to the Python integration, not the card.
+    const type=String(n.device_type||"").toLowerCase();
+    if(type==="router")return "router";
+    if(type==="switch")return "switch";
+    if(type==="repeater"||type==="access_point")return "repeater";
     return "device";
   }
   _connection(n){
