@@ -331,9 +331,25 @@ class FritzBoxWlanConnectionSensor(
 
     @property
     def _observation(self) -> dict[str, Any] | None:
+        host = (self.coordinator.data or {}).get(self._mac)
+        # Match configured repeater by its configured IP, as already done
+        # for the status sensor. Do not infer a role from the device name.
+        if host and self._field == "role":
+            ip = host.get("ip_address")
+            configs = self.coordinator.entry.options.get("repeaters", {})
+            if isinstance(configs, dict):
+                for configured_host, config in configs.items():
+                    if not isinstance(config, dict):
+                        continue
+                    if config.get("host") == ip or configured_host == ip:
+                        host = dict(host)
+                        host["repeater_raw_data"] = (
+                            self.coordinator.repeater_raw_store.summary(configured_host)
+                        )
+                        break
         return connection_metadata(
             self._mac,
-            (self.coordinator.data or {}).get(self._mac),
+            host,
             self.coordinator.device_details.get(self._mac),
             self.coordinator.data or {},
             self.coordinator.mesh_topology,
