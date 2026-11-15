@@ -535,9 +535,24 @@ class FritzNetworkCenterCard extends HTMLElement {
     const edges = (this._data?.edges || []).map(e => ({
       ...e, source: String(e.source || "").toUpperCase(), target: String(e.target || "").toUpperCase()
     }));
+    // The integration publishes FDB membership separately from physical edges.
+    // Display its branch memberships without inferring a direct physical link.
+    const branchMembers = new Map();
+    for (const branch of this._data?.branches || []) {
+      const switchId = String(branch.switch_mac || "").toUpperCase();
+      if (!switchId) continue;
+      if (!branchMembers.has(switchId)) branchMembers.set(switchId, new Set());
+      for (const member of branch.members || []) {
+        const memberId = String(member.mac || "").toUpperCase();
+        if (memberId && memberId !== switchId) branchMembers.get(switchId).add(memberId);
+      }
+    }
     const groups = nodes.filter(n => ["router","switch","repeater"].includes(n.kind)).map(n => ({
       parent_id: n.id,
-      member_ids: edges.filter(e => e.source === n.id).map(e => e.target)
+      member_ids: [...new Set([
+        ...edges.filter(e => e.source === n.id).map(e => e.target),
+        ...(branchMembers.get(n.id) || [])
+      ])]
     }));
     const selectedTheme = ["light", "dark"].includes(this.config.theme) ? this.config.theme : "auto";
     this.setAttribute("data-fnc-theme", selectedTheme);
