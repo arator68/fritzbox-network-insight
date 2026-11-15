@@ -1,3 +1,4 @@
+import "./fritz-network-insight-original-map.js";
 /* Network Insight – Network Center view. Read-only; no topology inference. */
 class FritzNetworkInsightMapCard extends HTMLElement {
   static getConfigElement(){return document.createElement("fritz-network-insight-map-card-editor");}
@@ -215,6 +216,12 @@ class FritzNetworkInsightMapCard extends HTMLElement {
        '</style>';
 
     this._applyPalette();
+    const originalMap=this.querySelector("fritz-network-insight-original-map");
+    if(originalMap){
+      originalMap.setConfig({design:this.config.design,theme:this.config.theme,entry_id:this.config.entry_id,animate_connections:this.config.animate_connections});
+      originalMap.hass=this._hass;
+      originalMap.topology=this._data;
+    }
     const groupHeading=this.querySelector(".fnc-groups-heading");
     if(groupHeading)groupHeading.style.display=search?"none":"";
     const input=this.querySelector(".fnc-search");
@@ -252,9 +259,8 @@ class FritzNetworkInsightMapCardEditor extends HTMLElement {
       });
     }
     const form=this._form;form.hass=this._hass;
-    form.data={entity:this._config.entity||"sensor.netzwerk_topologie",title:this._config.title,theme:this._config.theme,design:this._config.design,heading_color:this._config.heading_color,background_color:this._config.background_color};
+    form.data={title:this._config.title,theme:this._config.theme,design:this._config.design,heading_color:this._config.heading_color,background_color:this._config.background_color};
     form.schema=[
-      {name:"entity",label:"Entity",selector:{entity:{domain:"sensor"}}},
       {name:"title",label:"Titel",selector:{text:{}}},
       {name:"theme",label:"Theme",selector:{select:{mode:"dropdown",options:[{value:"auto",label:"Automatisch"},{value:"light",label:"Hell"},{value:"dark",label:"Dunkel"}]}}},
       {name:"design",label:"Design",selector:{select:{mode:"dropdown",options:[{value:"modern-dark",label:"Modern Dark"},{value:"modern-light",label:"Modern Light"},{value:"lcars",label:"LCARS"},{value:"cyber",label:"Cyber"},{value:"custom",label:"Benutzerdefiniert"}]}}},
