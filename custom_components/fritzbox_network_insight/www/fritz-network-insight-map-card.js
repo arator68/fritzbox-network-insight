@@ -2,7 +2,7 @@
 class FritzNetworkInsightMapCard extends HTMLElement {
   static getConfigElement(){return document.createElement("fritz-network-insight-map-card-editor");}
   static getStubConfig(){return {design:"modern-dark",height:620,refresh_seconds:60};}
-  setConfig(config){this.config={title:"Network Center",theme:"auto",design:"modern-dark",heading_color:"",background_color:"",height:620,refresh_seconds:60,...config};this._data=null;this._error="";this._search="";this._filter="all";this._expanded=new Set();this._showMap=false;this._selectedComponent=null;}
+  setConfig(config){this.config={title:"Network Center",theme:"auto",design:"modern-dark",heading_color:"",background_color:"",height:620,refresh_seconds:60,...config};if(!this._stateInitialized){this._data=null;this._error="";this._search="";this._filter="all";this._expanded=new Set();this._showMap=false;this._selectedComponent=null;this._stateInitialized=true;}}
   connectedCallback(){this._active=true;this._load();this._timer=setInterval(()=>this._load(),Math.max(15,Number(this.config?.refresh_seconds)||60)*1000);}
   disconnectedCallback(){this._active=false;clearInterval(this._timer);}
   set hass(hass){this._hass=hass;if(this._active&&!this._data&&!this._loading)this._load();}
@@ -129,6 +129,10 @@ class FritzNetworkInsightMapCard extends HTMLElement {
   }
   render(searchOnly=false){
     if(!this.config)return;
+    const activeSearch=this.querySelector(".fnc-search");
+    const restoreFocus=!searchOnly&&activeSearch&&this.contains(document.activeElement)&&document.activeElement===activeSearch;
+    const selectionStart=restoreFocus?activeSearch.selectionStart:null;
+    const selectionEnd=restoreFocus?activeSearch.selectionEnd:null;
     const esc=v=>this._esc(v),data=this._data,view=this._view();
     const {nodes,components,groups,other}=view;
     const search=this._search.trim().toLowerCase();
@@ -200,6 +204,7 @@ class FritzNetworkInsightMapCard extends HTMLElement {
 
     this._applyPalette();
     const input=this.querySelector(".fnc-search");
+    if(restoreFocus&&input){input.focus({preventScroll:true});try{input.setSelectionRange(selectionStart,selectionEnd);}catch(_){}}
     if(input){input.addEventListener("input",e=>{this._search=e.target.value;this.render(true);});}
     const select=this.querySelector(".fnc-filter");
     if(select){select.value=this._filter;select.addEventListener("change",e=>{this._filter=e.target.value;this.render();});}
