@@ -22,7 +22,7 @@ REMOTE_FIELDS = {
 }
 MAX_ROWS = 64
 MAX_NEIGHBORS = 16
-WALK_TIMEOUT = 2.5
+WALK_TIMEOUT = 10.0
 
 
 async def async_read_lldp(
