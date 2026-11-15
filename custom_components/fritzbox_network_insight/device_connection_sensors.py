@@ -44,7 +44,7 @@ class FritzBoxDeviceConnectionSensor(
             return None, {}
         if self._field == "role":
             kind = str(host.get("device_type") or "").strip().lower()
-            return {"router": "Router", "switch": "Switch", "repeater": "Repeater", "access_point": "Access Point", "access point": "Access Point"}.get(kind, "Endgerät"), {}
+            return {"router": "Router", "switch": "Switch", "repeater": "Repeater", "access_point": "Access Point", "access point": "Access Point"}.get(kind, "Endgerät"), {"device_type_source": host.get("device_type_source")}
         connection = connection_details(
             self._mac, host,
             self.coordinator.get_combined_topology_snapshot(),
