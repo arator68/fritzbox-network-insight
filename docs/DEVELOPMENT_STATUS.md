@@ -328,3 +328,9 @@ Server-3
 - Die bestehende Rückgabe der LLDP-Nachbarliste und das 2,5-Sekunden-Gesamtlimit bleiben unverändert. Keine Änderung an Rollen, Topologie oder Netzwerkkarte.
 - **Offen:** GitHub-CI und HA-Praxistest; anschließend SG3428-Geräteerkennung manuell starten und `lldp_diagnostics` auswerten.
 
+
+### 15.11.2026 – LLDP-Timeout auf 10 Sekunden erhöht
+
+- HA-Praxistest des Diagnoseattributs `lldp_diagnostics`: `status=timeout`, `local_ports_status=ok`, `local_ports_count=28`, `local_ports_duration_ms=1091`, `failed_phase=remote`, `remote_duration_ms=1409`, `duration_ms=2500`; FDB und Port-Telemetrie weiterhin erfolgreich.
+- Auf Basis dieses Befunds `WALK_TIMEOUT` in `discovery/lldp.py` von 2,5 auf 10,0 Sekunden erhöht (Commit `9817385`). Sonst keine Änderung an der LLDP-Verarbeitung oder an Topologie/Rollen/Karte.
+- **Noch offen:** Installation und erneuter HA-Test mit manuell gestarteter Geräteerkennung des SG3428; `lldp_diagnostics`, `lldp_neighbor_count` und `lldp_neighbors` prüfen. Nicht als behoben markieren, bevor Nachbarn tatsächlich gelesen wurden.
