@@ -151,7 +151,7 @@ class FritzNetworkInsightMapCard extends HTMLElement {
       const visible=devices.filter(shown);
       if(search&&!matches(c)&&!visible.length)return "";
       if(this._filter==="device"&&!visible.length)return "";
-      const id=this._id(c),expanded=this._expanded.has(id);
+      const id=this._id(c),expanded=this._expanded.has(id)||(Boolean(search)&&visible.length>0);
       return '<section class="fnc-group"><button class="fnc-group-head" data-group="'+esc(id)+'"><span><strong>'+esc(c.name||c.mac)+'</strong><small>'+devices.length+' direkt verbundene Geräte</small></span><b>'+(expanded?"−":"+")+'</b></button>'+(expanded?'<div class="fnc-group-items">'+(visible.map(item).join("")||'<span class="fnc-empty">Keine passenden Geräte</span>')+'</div>':"")+'</section>';
     }).join("");
     let otherVisible=other.filter(shown);
