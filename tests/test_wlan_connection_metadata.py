@@ -38,7 +38,7 @@ class WlanConnectionMetadataTests(unittest.TestCase):
         mesh = {"aliases": {self.PEER: self.PEER},
                 "nodes": [{"mac": self.PEER, "name": "Repeater-Flur.koch.local"}]}
         observed = module.connection_metadata(self.MAC, host, details, {}, mesh)
-        self.assertEqual(observed["role"]["value"], "WLAN-Client")
+        self.assertEqual(observed["role"]["value"], "Endgerät")
         self.assertEqual(observed["band"]["value"], "5 GHz")
         self.assertEqual(observed["peer"]["value"], "Repeater-Flur.koch.local")
         self.assertEqual(observed["peer"]["connection_scope"], "avm_reported_wlan_link")

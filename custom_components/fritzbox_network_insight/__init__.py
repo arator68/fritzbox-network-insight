@@ -1,6 +1,9 @@
 """Home Assistant integration for FRITZ!Box Network Insight."""
 from __future__ import annotations
 
+from pathlib import Path
+from homeassistant.components.http import StaticPathConfig
+
 import logging
 import voluptuous as vol
 
@@ -56,6 +59,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ) from err
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    # Serve only the new, standalone read-only Lovelace map.
+    # No changes to sensors, topology or protocol discovery.
+    if not hass.data.get("_fritzbox_network_insight_map_registered"):
+        card_path = Path(__file__).parent / "www" / "fritz-network-insight-map-card.js"
+        await hass.http.async_register_static_paths([
+            StaticPathConfig(
+                "/fritzbox_network_insight/fritz-network-insight-map-card.js",
+                str(card_path),
+                cache_headers=False,
+            )
+        ])
+        hass.data["_fritzbox_network_insight_map_registered"] = True
+
 
     if not hass.services.has_service(DOMAIN, "device_details_diagnostics"):
         async def async_device_details_diagnostics(call):

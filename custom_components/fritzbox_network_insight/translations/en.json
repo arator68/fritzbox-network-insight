@@ -96,6 +96,7 @@
       "wlan_connection_peer": {
         "name": "Connected to"
       },
+      "connection_role": {"name": "Device role"},
       "connection_type": {
         "name": "Connection type"
       },

@@ -1,0 +1,261 @@
+/* Network Insight – Network Center view. Read-only; no topology inference. */
+class FritzNetworkInsightMapCard extends HTMLElement {
+  static getConfigElement(){return document.createElement("fritz-network-insight-map-card-editor");}
+  static getStubConfig(){return {design:"modern-dark",height:620,refresh_seconds:60};}
+  setConfig(config){this.config={title:"Network Center",theme:"auto",design:"modern-dark",heading_color:"",background_color:"",height:620,refresh_seconds:60,...config};if(!this._stateInitialized){this._data=null;this._error="";this._search="";this._filter="all";this._expanded=new Set();this._showMap=false;this._selectedComponent=null;this._stateInitialized=true;}}
+  connectedCallback(){this._active=true;this._load();this._timer=setInterval(()=>this._load(),Math.max(15,Number(this.config?.refresh_seconds)||60)*1000);}
+  disconnectedCallback(){this._active=false;clearInterval(this._timer);}
+  set hass(hass){this._hass=hass;if(this._active&&!this._data&&!this._loading)this._load();}
+  getCardSize(){return 8;}
+  getGridOptions(){return {columns:"full",rows:"auto"};}
+  async _load(){
+    if(!this._hass||this._loading||!this._active)return;
+    this._loading=true;
+    try{
+      const response=await this._hass.callWS({type:"call_service",domain:"fritzbox_network_insight",service:"topology_view",service_data:this.config.entry_id?{entry_id:this.config.entry_id}:{},return_response:true});
+      const data=response?.response??response?.service_response??response;
+      if(!Array.isArray(data?.nodes)||!Array.isArray(data?.edges))throw Error(data?.error||"Keine gültigen Topologiedaten erhalten");
+      const signature=JSON.stringify(data);
+      const changed=signature!==this._dataSignature||Boolean(this._error);
+      this._data=data;this._dataSignature=signature;this._error="";
+      if(changed&&this._active)this.render();
+    }catch(e){const error=String(e?.message||e);if(error!==this._error){this._error=error;if(this._active)this.render();}}finally{this._loading=false;}
+  }
+  _esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+  _id(n){return String(n.id||n.mac||"").toUpperCase();}
+  _kind(n){
+    // Device classification belongs to the Python integration, not the card.
+    const type=String(n.device_type||"").toLowerCase();
+    if(type==="router")return "router";
+    if(type==="switch")return "switch";
+    if(type==="repeater"||type==="access_point")return "repeater";
+    return "device";
+  }
+  _connection(n){
+    const compact=String(n.mac||n.id||"").replace(/:/g,"").toLowerCase();
+    const s=this._hass?.states?.["sensor.fritzbox_network_insight_"+compact+"_connection_peer"];
+    if(!s||["unknown","unavailable","none",""].includes(String(s.state).toLowerCase()))return null;
+    return {name:String(s.state),mac:String(s.attributes?.connected_to_mac||"").toUpperCase(),evidence:s.attributes?.evidence,direct:s.attributes?.direct_connection==="confirmed"};
+  }
+  _online(n){
+    if(typeof n.online==="boolean")return n.online;
+    if(typeof n.is_online==="boolean")return n.is_online;
+    const compact=String(n.mac||n.id||"").replace(/:/g,"").toLowerCase();
+    const s=this._hass?.states?.["sensor.fritzbox_network_insight_"+compact+"_status"];
+    if(!s)return null;
+    const v=String(s.state).toLowerCase();
+    if(["online","on","connected","verbunden"].includes(v))return true;
+    if(["offline","off","disconnected","getrennt"].includes(v))return false;
+    return null;
+  }
+  _view(){
+    const nodes=(this._data?.nodes||[]).filter(n=>n.known_host===true).map(n=>{const id=String(n.mac||n.id||"").replace(/:/g,"").toLowerCase();const a=this._hass?.states?.["sensor.fritzbox_network_insight_"+id+"_status"]?.attributes||{};return {...n,device_type:a.device_type||n.device_type,mesh_role:a.mesh_role||n.mesh_role,name:a.dns_name||n.name,ip_address:a.ip_address||n.ip_address};});
+    const byId=new Map(nodes.map(n=>[this._id(n),n]));
+    const norm=v=>String(v||"").trim().toLowerCase().replace(/\.koch\.local$/,"").replace(/[^a-z0-9]/g,"");
+    const byName=new Map(nodes.flatMap(n=>[n.name,n.mac].map(x=>[norm(x),n])));
+    const groups=new Map(),assigned=new Set();
+    const components=nodes.filter(n=>this._kind(n)!=="device");
+    for(const c of components)groups.set(this._id(c),[]);
+    for(const n of nodes){
+      if(this._kind(n)!=="device")continue;
+      const rel=this._connection(n)||(()=>{const key=String(n.mac||n.id||"").replace(/:/g,"").toLowerCase();const p=this._hass?.states?.["sensor.fritzbox_network_insight_"+key+"_wlan_connection_peer"];return p&&!["unknown","unavailable","none",""].includes(String(p.state).toLowerCase())?{name:String(p.state),mac:String(p.attributes?.peer_mac||"").toUpperCase(),evidence:p.attributes?.source}:null;})();
+      let parent=rel&&(byId.get(rel.mac)||byName.get(norm(rel.name)));
+      if(!parent){
+        const edge=(this._data.edges||[]).find(e=>e.target===this._id(n)&&groups.has(String(e.source).toUpperCase())&&(e.kind==="mesh_wlan"&&e.evidence==="avm_mesh"||e.kind==="confirmed_lan"&&e.physical_link_confirmed===true));
+        if(edge)parent=byId.get(String(edge.source).toUpperCase());
+      }
+      if(parent&&groups.has(this._id(parent))){groups.get(this._id(parent)).push(n);assigned.add(this._id(n));}
+    }
+    return {nodes,components,groups,other:nodes.filter(n=>this._kind(n)==="device"&&!assigned.has(this._id(n)))};
+  }
+
+  _mapHtml(view){
+    const esc=v=>this._esc(v),{nodes,components,groups,other}=view;
+    const ids=new Set(components.map(n=>this._id(n))),byId=new Map(components.map(n=>[this._id(n),n]));
+    const links=[],seen=new Set();
+    const add=(a,b)=>{a=String(a||"").toUpperCase();b=String(b||"").toUpperCase();if(!ids.has(a)||!ids.has(b)||a===b||seen.has(a+"|"+b))return;seen.add(a+"|"+b);links.push([a,b]);};
+    for(const e of this._data?.edges||[]){
+      if(e.kind==="mesh_wlan"&&e.evidence==="avm_mesh"||e.kind==="confirmed_lan"&&e.physical_link_confirmed===true)add(e.source,e.target);
+    }
+    for(const n of components){
+      const key=String(n.mac||"").replace(/:/g,"").toLowerCase();
+      const p=this._hass?.states?.["sensor.fritzbox_network_insight_"+key+"_wlan_connection_peer"];
+      const r=this._connection(n)||(p?.attributes?.peer_mac?{mac:String(p.attributes.peer_mac).toUpperCase(),name:String(p.state)}:null);
+      if(!r)continue;
+      const parent=components.find(c=>this._id(c)===r.mac||String(c.name||"").toLowerCase()===r.name.toLowerCase());
+      if(parent&&r.evidence!=="fdb_reachable_via_port")add(this._id(parent),this._id(n));
+    }
+    const selected=byId.get(this._selectedComponent);
+    const root=components.find(n=>this._kind(n)==="router")||components[0];
+    const parent=new Map(),children=new Map(components.map(n=>[this._id(n),[]]));
+    const queue=root?[this._id(root)]:[],visited=new Set(queue);
+    while(queue.length){const id=queue.shift();for(const [a,b] of links){const other=a===id?b:b===id?a:null;if(!other||visited.has(other))continue;visited.add(other);parent.set(other,id);children.get(id).push(other);queue.push(other);}}
+    const roots=[...(root?[this._id(root)]:[]),...components.map(n=>this._id(n)).filter(id=>!visited.has(id))];
+    const leaf=new Map(),depth=new Map();let cursor=0;
+    const walk=(id,d)=>{depth.set(id,d);const kids=children.get(id)||[];if(!kids.length)leaf.set(id,cursor++);else kids.forEach(k=>walk(k,d+1));};
+    roots.forEach(id=>walk(id,0));
+    const w=Math.max(900,roots.length*220,Math.max(1,cursor)*230),positions=new Map();
+    const place=id=>{const kids=children.get(id)||[];const x=kids.length?kids.map(place).reduce((a,b)=>a+b,0)/kids.length:115+(w-230)*(leaf.get(id)+.5)/Math.max(1,cursor);positions.set(id,{x,y:34+(depth.get(id)||0)*185});return x;};
+    roots.forEach(place);
+    const h=Math.max(410,Math.max(0,...depth.values())*185+170);
+    const node=n=>{const id=this._id(n),p=positions.get(id),kind=this._kind(n),count=(groups.get(id)||[]).length;
+      return '<button class="fnc-map-node '+kind+'" data-component="'+esc(id)+'" style="left:'+(p.x-100)+'px;top:'+p.y+'px"><span class="fnc-map-icon">'+({router:"◉",switch:"▦",repeater:"⌁"}[kind]||"●")+'</span><span><strong>'+esc(n.name||n.mac)+'</strong><small>'+esc(kind)+' · '+esc(n.ip_address||"")+'</small><small>'+count+' Endgeräte · '+(children.get(id)||[]).length+' Komponenten</small></span><b>›</b></button>';
+    };
+    const line=([a,b])=>{if(parent.get(b)!==a&&parent.get(a)!==b)return "";const p=positions.get(a),q=positions.get(b);return '<path d="M '+p.x+' '+(p.y+95)+' C '+p.x+' '+(p.y+140)+', '+q.x+' '+(q.y-45)+', '+q.x+' '+q.y+'" />';};
+    const stats='<div class="fnc-stats">'+[['Geräte gesamt',nodes.length],['Netzwerkkomponenten',components.length],['Online',nodes.filter(n=>this._online(n)===true).length],['Offline',nodes.filter(n=>this._online(n)===false).length]].map(([k,v])=>'<div class="fnc-stat"><strong>'+v+'</strong><small>'+k+'</small></div>').join("")+'</div>';
+    const content=selected?'<button data-map-back>← Gesamtübersicht</button><h3>'+esc(selected.name||selected.mac)+'</h3><div class="fnc-other">'+(groups.get(this._id(selected))||[]).map(n=>'<div class="fnc-device">'+esc(n.name||n.mac)+'</div>').join("")+'</div>':
+      '<h3>GRAFISCHE NETZWERKTOPOLOGIE – KNOTEN AUSWÄHLEN FÜR DETAILS</h3><div class="fnc-map-scroll"><div class="fnc-map-canvas" style="width:'+w+'px;height:'+h+'px"><svg viewBox="0 0 '+w+' '+h+'">'+links.map(line).join("")+'</svg>'+components.map(node).join("")+'</div></div><h3>Weitere / nicht zugeordnete Geräte: '+other.length+'</h3>';
+    return '<div class="fnc-map-head">Netzwerk-Gesamtübersicht · Datenquelle: Network Insight</div>'+stats+content;
+  }
+  _applyPalette(){
+    const palettes={
+      "modern-dark":{background:"#171b22",panel:"#222a35",border:"#394454",text:"#f1f5f9",accent:"#03a9f4"},
+      "modern-light":{background:"#ffffff",panel:"#f1f5f9",border:"#d8dee8",text:"#1f2937",accent:"#0284c7"},
+      "lcars":{background:"#071522",panel:"#102b3c",border:"#0b7896",text:"#e7f5ff",accent:"#00bfff"},
+      "cyber":{background:"#0c1422",panel:"#17273b",border:"#22658c",text:"#e6f5ff",accent:"#00c8ff"},
+      "custom":{background:"#171b22",panel:"#222a35",border:"#394454",text:"#f1f5f9",accent:"#03a9f4"}
+    };
+    const palette={...(palettes[this.config.design]||palettes["modern-dark"])};
+    if(this.config.theme==="light"&&this.config.design==="modern-dark")Object.assign(palette,palettes["modern-light"]);
+    const safe=v=>typeof v==="string"&&/^(#[0-9a-fA-F]{3,8}|(?:rgb|hsl)a?\([\d.,%\s]+\))$/.test(v.trim())?v.trim():null;
+    palette.background=safe(this.config.background_color)||palette.background;
+    const heading=safe(this.config.heading_color)||palette.text;
+    const force=(selector,props)=>this.querySelectorAll(selector).forEach(el=>Object.entries(props).forEach(([k,v])=>el.style.setProperty(k,v,"important")));
+    force(".fnc-card,.fnc-wrap",{"background-color":palette.background,color:palette.text});
+    force(".fnc-stat",{"background-color":palette.background,color:palette.text,"border-color":palette.border});
+    force(".fnc-stat strong,.fnc-group-head b",{"color":palette.accent});
+    force(".fnc-group-head,.fnc-device,.fnc-search,.fnc-filter",{"background-color":palette.panel,color:palette.text,"border-color":palette.border});
+    force(".fnc-group-head strong,.fnc-device strong",{color:palette.text});
+    force(".fnc-group-head small,.fnc-device small",{color:palette.text==="\x231f2937"?"#526277":"#a6bce1"});
+    force(".fnc-wrap h2,.fnc-wrap h3",{"color":heading});
+    force(".fnc-map-toggle",{"background-color":palette.accent});
+    force(".fnc-exact-result",{"background-color":palette.panel,"border-color":palette.border,color:palette.text});
+    force(".fnc-exact-owner",{"border-color":palette.border});
+    force(".fnc-exact-owner strong,.fnc-exact-text strong",{color:palette.text});
+  }
+  render(searchOnly=false){
+    if(!this.config)return;
+    const activeSearch=this.querySelector(".fnc-search");
+    const restoreFocus=!searchOnly&&activeSearch&&this.contains(document.activeElement)&&document.activeElement===activeSearch;
+    const selectionStart=restoreFocus?activeSearch.selectionStart:null;
+    const selectionEnd=restoreFocus?activeSearch.selectionEnd:null;
+    const esc=v=>this._esc(v),data=this._data,view=this._view();
+    const {nodes,components,groups,other}=view;
+    const search=this._search.trim().toLowerCase();
+    const ipSearch=/^\d{1,3}(?:\.\d{1,3}){3}$/.test(search);
+    const matches=n=>!search||(ipSearch
+      ? String(n.ip_address||"").trim()===search
+      : [n.name,n.mac,n.ip_address].some(v=>String(v||"").toLowerCase().includes(search)));
+    const filter=n=>this._filter==="all"||this._filter===this._kind(n);
+    const shown=n=>matches(n)&&filter(n);
+    const online=nodes.filter(n=>this._online(n)===true).length;
+    const offline=nodes.filter(n=>this._online(n)===false).length;
+    const connectionCount=nodes.filter(n=>this._kind(n)!=="router"&&(this._connection(n)||this._hass?.states?.["sensor.fritzbox_network_insight_"+String(n.mac||"").replace(/:/g,"").toLowerCase()+"_wlan_connection_peer"]?.state&&!["unknown","unavailable"].includes(String(this._hass.states["sensor.fritzbox_network_insight_"+String(n.mac||"").replace(/:/g,"").toLowerCase()+"_wlan_connection_peer"]?.state).toLowerCase()))).length;
+    const item=n=>'<button class="fnc-device" data-device="'+esc(this._id(n))+'"><span class="fnc-dot '+(this._online(n)===true?"on":"")+'"></span><span class="fnc-device-text"><strong>'+esc(n.name||n.mac)+'</strong><small>'+esc(this._kind(n)==="device"?"Endgerät":this._kind(n))+' · '+esc(n.ip_address||"")+'</small></span></button>';
+    const tiles=components.filter(c=>filter(c)||this._filter==="device").map(c=>{
+      const devices=(groups.get(this._id(c))||[]).filter(n=>this._online(n)!==false);
+      const visible=devices.filter(n=>shown(n)&&this._online(n)!==false);
+      if(search&&!matches(c)&&!visible.length)return "";
+      if(this._filter==="device"&&!visible.length)return "";
+      const id=this._id(c),expanded=this._expanded.has(id)||(Boolean(search)&&visible.length>0);
+      return '<section class="fnc-group"><button class="fnc-group-head" data-group="'+esc(id)+'"><span><strong>'+esc(c.name||c.mac)+'</strong><small>'+devices.length+' direkt verbundene Geräte</small></span><b>'+(expanded?"−":"+")+'</b></button>'+(expanded?'<div class="fnc-group-items">'+(visible.map(item).join("")||'<span class="fnc-empty">Keine passenden Geräte</span>')+'</div>':"")+'</section>';
+    }).join("");
+    const offlineDevices=nodes.filter(n=>this._kind(n)==="device"&&this._online(n)===false);
+    const unassignedDevices=other.filter(n=>this._online(n)!==false);
+    const otherVisible=unassignedDevices.filter(shown);
+    // Complete IPv4 queries are exact device lookups, not component-group filters.
+    // Keep the associated component as context only; never display its full group.
+    const searchResults=search?nodes.filter(shown):[];
+    const searchResultHtml=searchResults.map(n=>{
+      const owner=components.find(c=>(groups.get(this._id(c))||[]).some(d=>this._id(d)===this._id(n)));
+      const onlineState=this._online(n);
+      const stateLabel=onlineState===true?"Online":onlineState===false?"Offline":"Status unbekannt";
+      return '<button class="fnc-exact-result" data-device="'+esc(this._id(n))+'">'+
+        '<span class="fnc-exact-main"><span class="fnc-dot '+(onlineState===true?"on":"")+'"></span><span class="fnc-exact-text">'+
+        '<strong>'+esc(n.name||n.mac||n.ip_address)+'</strong><small>'+esc(this._kind(n)==="device"?"Endgerät":this._kind(n))+' · '+stateLabel+'</small></span></span>'+
+        (owner?'<span class="fnc-exact-owner"><span>Verbunden mit</span><strong>'+esc(owner.name||owner.mac)+'</strong></span>':'')+
+        '</button>';
+    }).join("");
+    const resultTiles=search?"":tiles;
+    const resultOther=search?searchResultHtml:offlineDevices.filter(shown).map(item).join("");
+    const unassignedHtml=!search&&otherVisible.length?'<h3 class="fnc-unassigned-heading">WEITERE GERÄTE</h3><div class="fnc-unassigned">'+otherVisible.map(item).join("")+'</div>':"";
+    if(searchOnly){
+      const groupContainer=this.querySelector(".fnc-groups");
+      const otherContainer=this.querySelector(".fnc-other");
+      if(groupContainer)groupContainer.innerHTML=resultTiles;
+      if(otherContainer)otherContainer.innerHTML=resultOther;
+      const unassignedContainer=this.querySelector(".fnc-unassigned-container");
+      if(unassignedContainer)unassignedContainer.innerHTML=unassignedHtml;
+      const groupHeading=this.querySelector(".fnc-groups-heading");
+      const otherHeading=this.querySelector(".fnc-other-heading");
+      if(groupHeading){groupHeading.textContent=search?"":"NETZWERKKOMPONENTEN UND DIREKT VERBUNDENE GERÄTE";groupHeading.style.display=search?"none":"";}
+      if(otherHeading)otherHeading.textContent=search?"SUCHERGEBNIS":"OFFLINE-GERÄTE";
+      this._bindResultClicks(nodes);
+      this._applyPalette();
+      return;
+    }
+    const allCount=nodes.length;
+    const stats=[["Geräte gesamt",allCount],["Verbindungen",connectionCount],["Online",online],["Offline",offline]];
+    this.innerHTML='<ha-card class="fnc-card"><div class="fnc-wrap"><h2>'+esc(this.config.title||"Network Center")+'</h2>'+
+      '<div class="fnc-stats">'+stats.map(([label,value])=>'<div class="fnc-stat"><strong>'+value+'</strong><small>'+label+'</small></div>').join("")+'</div>'+
+      '<div class="fnc-meta"><span>Router: '+components.filter(n=>this._kind(n)==="router").length+'</span><span>Switch: '+components.filter(n=>this._kind(n)==="switch").length+'</span><span>Repeater: '+components.filter(n=>this._kind(n)==="repeater").length+'</span></div>'+
+      '<div class="fnc-actions"><button class="fnc-map-toggle">'+(this._showMap?"← Network Center":"→ Netzwerk-Map öffnen")+'</button></div>'+
+      (this._error?'<p class="fnc-error">'+esc(this._error)+'</p>':"")+
+      (!data?'<p>Topologiedaten werden geladen …</p>':
+      '<div class="fnc-controls"><input class="fnc-search" type="search" placeholder="Gerät, IP oder MAC suchen ..." value="'+esc(this._search)+'"><select class="fnc-filter"><option value="all">Alle Geräte</option><option value="router">Router</option><option value="switch">Switches</option><option value="repeater">Repeater</option><option value="device">Endgeräte</option></select></div>'+
+      (this._showMap?this._mapHtml(view):
+      '<h3 class="fnc-groups-heading">'+(search?"":"NETZWERKKOMPONENTEN UND DIREKT VERBUNDENE GERÄTE")+'</h3><div class="fnc-groups">'+resultTiles+'</div><h3 class="fnc-other-heading">'+(search?"SUCHERGEBNIS":"OFFLINE-GERÄTE")+'</h3><div class="fnc-other">'+resultOther+'</div>')+
+      '<footer>Datenquelle: sensor.netzwerk_topologie · Beziehungen werden ausschließlich aus den Sensorattributen übernommen.</footer>')+
+      '</div></ha-card><style>'+
+      ':host{display:block;width:100%;min-width:0}.fnc-card{background:#161a20;color:#e7eaf0;border-radius:30px;overflow:hidden}.fnc-wrap{padding:14px;box-sizing:border-box;font-family:inherit}.fnc-wrap h2{font-size:22px;font-weight:500;margin:0 0 32px}.fnc-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.fnc-stat{border:1px solid #344052;border-radius:10px;padding:12px;min-height:75px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center}.fnc-stat strong{font-size:26px;color:#03a9f4;line-height:1.1}.fnc-stat small{font-size:12px;color:#b8c8e0}.fnc-meta{display:flex;gap:12px;margin-top:12px;font-size:12px;color:#a8bde0}.fnc-actions{display:flex;justify-content:flex-end;margin:12px 0 10px}.fnc-map-toggle{background:#03a9f4;color:#071522;border:0;border-radius:9px;padding:12px 18px;cursor:pointer;font-weight:600}.fnc-controls{display:flex;gap:8px;margin:8px 0 16px}.fnc-search,.fnc-filter{background:#222c3a;border:1px solid #354357;border-radius:9px;color:#e7eaf0;padding:12px;font:inherit;box-sizing:border-box}.fnc-search{flex:1;min-width:0}.fnc-filter{width:135px}.fnc-wrap h3{font-size:12px;margin:16px 0 10px;font-weight:700}.fnc-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:8px}.fnc-group{min-width:0}.fnc-group-head{width:100%;min-height:72px;display:flex;align-items:center;justify-content:space-between;text-align:left;gap:10px;border:1px solid #344052;background:#222c3a;color:#e7eaf0;border-radius:10px;padding:12px;cursor:pointer}.fnc-group-head strong,.fnc-device strong{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fnc-group-head small,.fnc-device small{display:block;font-size:11px;color:#a6bce1;margin-top:5px}.fnc-group-head b{color:#03a9f4}.fnc-group-items{display:grid;gap:5px;padding-top:6px}.fnc-other,.fnc-unassigned{display:flex;flex-wrap:wrap;gap:8px}.fnc-device{display:flex;align-items:center;gap:8px;min-width:190px;max-width:100%;border:1px solid #344052;border-radius:9px;background:#222c3a;color:#e7eaf0;text-align:left;padding:10px;cursor:pointer}.fnc-group-items .fnc-device{width:100%;min-width:0}.fnc-device-text{min-width:0}.fnc-dot{width:8px;height:8px;flex:none;background:#697383;border-radius:50%}.fnc-dot.on{background:#31cb8b}.fnc-wrap footer{font-size:11px;color:#a6bce1;margin-top:14px}.fnc-error{color:#ff9999}.fnc-info{padding:24px;border:1px solid #344052;border-radius:10px}@media(max-width:850px){.fnc-groups{grid-template-columns:repeat(2,minmax(0,1fr))}.fnc-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:520px){.fnc-groups{grid-template-columns:1fr}.fnc-controls{flex-wrap:wrap}.fnc-filter{width:100%}}'+
+      '.fnc-exact-result{display:flex;flex-direction:column;gap:10px;min-width:300px;max-width:400px;width:100%;background:#222c3a;color:#f1f5f9;border:1px solid #394454;border-radius:10px;padding:12px;text-align:left;cursor:pointer;font:inherit}.fnc-exact-main{display:flex;align-items:center;gap:12px;min-width:0}.fnc-exact-text{min-width:0}.fnc-exact-text strong{display:block;font-size:14px;overflow-wrap:anywhere}.fnc-exact-text small{display:block;font-size:12px;color:#a6bce1;margin-top:4px}.fnc-exact-owner{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-top:1px solid #394454;padding-top:10px;font-size:12px;color:#a6bce1}.fnc-exact-owner strong{color:#f1f5f9;font-weight:600}'+
+      '</style>';
+
+    this._applyPalette();
+    const groupHeading=this.querySelector(".fnc-groups-heading");
+    if(groupHeading)groupHeading.style.display=search?"none":"";
+    const input=this.querySelector(".fnc-search");
+    if(restoreFocus&&input){input.focus({preventScroll:true});try{input.setSelectionRange(selectionStart,selectionEnd);}catch(_){}}
+    if(input){input.addEventListener("input",e=>{this._search=e.target.value;this.render(true);});}
+    const select=this.querySelector(".fnc-filter");
+    if(select){select.value=this._filter;select.addEventListener("change",e=>{this._filter=e.target.value;this.render();});}
+    this.querySelector(".fnc-map-toggle")?.addEventListener("click",()=>{this._showMap=!this._showMap;this.render();});
+    this._bindResultClicks(nodes);
+  }
+  _bindResultClicks(nodes){
+    this.querySelectorAll("[data-group]").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.group;if(this._expanded.has(id))this._expanded.delete(id);else this._expanded.add(id);this.render();}));
+    this.querySelectorAll("[data-component]").forEach(b=>b.addEventListener("click",()=>{this._selectedComponent=b.dataset.component;this.render();}));
+    this.querySelectorAll("[data-map-back]").forEach(b=>b.addEventListener("click",()=>{this._selectedComponent=null;this.render();}));
+    this.querySelectorAll("[data-device]").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.device;const n=nodes.find(x=>this._id(x)===id);if(n){const event=new CustomEvent("hass-more-info",{bubbles:true,composed:true,detail:{entityId:"sensor.fritzbox_network_insight_"+String(n.mac||"").replace(/:/g,"").toLowerCase()+"_status"}});this.dispatchEvent(event);}}));
+  }
+}
+if(!customElements.get("fritz-network-insight-map-card"))customElements.define("fritz-network-insight-map-card",FritzNetworkInsightMapCard);
+window.customCards=window.customCards||[];
+if(!window.customCards.some(c=>c.type==="fritz-network-insight-map-card"))window.customCards.push({type:"fritz-network-insight-map-card",name:"FRITZ!Box Network Insight Map",description:"Network Center using existing integration data"});
+
+class FritzNetworkInsightMapCardEditor extends HTMLElement {
+  setConfig(config){this._config={title:"Network Center",theme:"auto",design:"modern-dark",heading_color:"",background_color:"",...config};this._render();}
+  set hass(hass){this._hass=hass;this._render();}
+  _render(){
+    if(!this._hass||!this._config)return;
+    if(!this._form){
+      this.innerHTML='<ha-form></ha-form><p style="font-size:12px;opacity:.8">Die Karte verwendet die vorhandenen Network-Insight-Daten.</p>';
+      this._form=this.querySelector("ha-form");
+      this._form.addEventListener("value-changed",ev=>{
+        ev.stopPropagation();this._config={...this._config,...ev.detail.value};
+        this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:this._config},bubbles:true,composed:true}));
+      });
+    }
+    const form=this._form;form.hass=this._hass;
+    form.data={entity:this._config.entity||"sensor.netzwerk_topologie",title:this._config.title,theme:this._config.theme,design:this._config.design,heading_color:this._config.heading_color,background_color:this._config.background_color};
+    form.schema=[
+      {name:"entity",label:"Entity",selector:{entity:{domain:"sensor"}}},
+      {name:"title",label:"Titel",selector:{text:{}}},
+      {name:"theme",label:"Theme",selector:{select:{mode:"dropdown",options:[{value:"auto",label:"Automatisch"},{value:"light",label:"Hell"},{value:"dark",label:"Dunkel"}]}}},
+      {name:"design",label:"Design",selector:{select:{mode:"dropdown",options:[{value:"modern-dark",label:"Modern Dark"},{value:"modern-light",label:"Modern Light"},{value:"lcars",label:"LCARS"},{value:"cyber",label:"Cyber"},{value:"custom",label:"Benutzerdefiniert"}]}}},
+      {name:"heading_color",label:"Überschriftenfarbe",selector:{text:{placeholder:"z. B. #00bfff (leer = Designfarbe)"}}},
+      {name:"background_color",label:"Hintergrundfarbe",selector:{text:{placeholder:"z. B. #111827 (leer = Designfarbe)"}}}
+    ];
+  }
+}
+if(!customElements.get("fritz-network-insight-map-card-editor"))customElements.define("fritz-network-insight-map-card-editor",FritzNetworkInsightMapCardEditor);

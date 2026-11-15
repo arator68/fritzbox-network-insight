@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
+from time import monotonic
 from typing import Any
 
 # LLDP-MIB: remote entry index = timeMark.localPortNum.remoteIndex
@@ -21,14 +22,23 @@ REMOTE_FIELDS = {
 }
 MAX_ROWS = 64
 MAX_NEIGHBORS = 16
-WALK_TIMEOUT = 2.5
+WALK_TIMEOUT = 10.0
 
 
-async def async_read_lldp(engine: Any, user: Any, target: Any) -> list[dict[str, str]]:
+async def async_read_lldp(
+    engine: Any, user: Any, target: Any,
+    diagnostics: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
     """Read a small bounded portion of the standard LLDP MIB."""
     from pysnmp.hlapi.v3arch.asyncio import (
         ContextData, ObjectIdentity, ObjectType, walk_cmd,
     )
+
+    started = monotonic()
+    phase = "local_ports"
+    phase_started = started
+    if diagnostics is not None:
+        diagnostics.update(status="running", local_ports_status="not_started", remote_status="not_started")
 
     async def _walk(base: str) -> list[tuple[str, str]]:
         rows: list[tuple[str, str]] = []
@@ -38,7 +48,7 @@ async def async_read_lldp(engine: Any, user: Any, target: Any) -> list[dict[str,
             lexicographicMode=False,
         ):
             if error or status:
-                break
+                raise RuntimeError("snmp_error")
             for oid, value in var_binds:
                 oid_text = str(oid)
                 if not oid_text.startswith(base + "."):
@@ -50,11 +60,18 @@ async def async_read_lldp(engine: Any, user: Any, target: Any) -> list[dict[str,
 
     async def _read() -> list[dict[str, str]]:
         local_ports: dict[str, str] = {}
+        nonlocal phase, phase_started
         for oid, value in await _walk(LOCAL_PORT_ID):
             index = oid[len(LOCAL_PORT_ID) + 1:]
             if index.isdecimal():
                 local_ports[index] = value[:128]
 
+        if diagnostics is not None:
+            diagnostics["local_ports_status"] = "ok" if local_ports else "empty"
+            diagnostics["local_ports_count"] = len(local_ports)
+            diagnostics["local_ports_duration_ms"] = round((monotonic() - phase_started) * 1000)
+        phase = "remote"
+        phase_started = monotonic()
         remote: dict[tuple[str, str], dict[str, str]] = defaultdict(dict)
         for oid, value in await _walk(REMOTE_BASE):
             suffix = oid[len(REMOTE_BASE) + 1:].split(".")
@@ -68,6 +85,10 @@ async def async_read_lldp(engine: Any, user: Any, target: Any) -> list[dict[str,
                 continue
             remote[(local_port, remote_index)][field] = value[:256]
 
+        if diagnostics is not None:
+            diagnostics["remote_status"] = "ok" if remote else "empty"
+            diagnostics["remote_rows_count"] = len(remote)
+            diagnostics["remote_duration_ms"] = round((monotonic() - phase_started) * 1000)
         neighbors = []
         for (port, remote_index), fields in sorted(
             remote.items(), key=lambda item: (int(item[0][0]), int(item[0][1]))
@@ -83,7 +104,26 @@ async def async_read_lldp(engine: Any, user: Any, target: Any) -> list[dict[str,
         return neighbors
 
     try:
-        return await asyncio.wait_for(_read(), timeout=WALK_TIMEOUT)
-    except (TimeoutError, Exception):
-        # A failed LLDP read must not invalidate a successful SNMP sysInfo probe.
+        neighbors = await asyncio.wait_for(_read(), timeout=WALK_TIMEOUT)
+        if diagnostics is not None:
+            diagnostics["status"] = "ok" if neighbors else "empty"
+        return neighbors
+    except TimeoutError:
+        if diagnostics is not None:
+            diagnostics["status"] = "timeout"
+            diagnostics["failed_phase"] = phase
+            diagnostics[f"{phase}_status" if phase == "remote" else "local_ports_status"] = "timeout"
         return []
+    except Exception:
+        if diagnostics is not None:
+            diagnostics["status"] = "snmp_error"
+            diagnostics["failed_phase"] = phase
+            diagnostics[f"{phase}_status" if phase == "remote" else "local_ports_status"] = "snmp_error"
+        return []
+    finally:
+        if diagnostics is not None:
+            diagnostics["duration_ms"] = round((monotonic() - started) * 1000)
+            if phase == "remote" and "remote_duration_ms" not in diagnostics:
+                diagnostics["remote_duration_ms"] = round((monotonic() - phase_started) * 1000)
+            elif phase == "local_ports" and "local_ports_duration_ms" not in diagnostics:
+                diagnostics["local_ports_duration_ms"] = round((monotonic() - phase_started) * 1000)

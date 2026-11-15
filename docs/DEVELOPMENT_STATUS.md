@@ -1,3 +1,31 @@
+# Aktueller Entwicklungsstand – 15.11.2026
+
+**Arbeitsbranch:** `feature/network-map-card-0729` · **PR:** [#48](https://github.com/arator68/fritzbox-network-insight/pull/48) gegen `develop`, derzeit **Draft und noch nicht gemergt**. `main` bleibt unverändert. Diese Momentaufnahme ersetzt die ältere Statusüberschrift vom 11.11.2026; die folgenden Abschnitte bleiben als Historie erhalten.
+
+## Aktuelle Arbeit: Network Center und Gerätesensoren
+
+- Eigenständige Lovelace-Karte `fritz-network-insight-map-card.js` mit Network-Center-Übersicht, Suche nach Name/IP/MAC, Filtern, aufklappbaren Komponenten, separaten Offline-Geräten und grafischer Kartenansicht. Daten über den vorhandenen Dienst `fritzbox_network_insight.topology_view`; keine neue physische Topologiebehauptung durch die Karte.
+- HA-Screenshot vom 15.11.: 72 Geräte, 68 online, 4 offline, 65 Verbindungen; Komponentenraster mit fünf Kacheln. Zähler „Repeater: 3“ bei zwei sichtbaren Repeater-Kacheln ist noch zu untersuchen.
+- Gegen periodisches Flackern wird die Oberfläche bei identischer Serviceantwort nicht mehr komplett neu aufgebaut (Commit `eb0376e`). **Wirkung im HA-Betrieb noch nicht bestätigt.**
+- Gerätesensor `Verbindungstyp` zeigt `LAN`/`WLAN` statt `lan`/`wlan`.
+- `Geräterolle` wurde für LAN-Geräte ergänzt; WLAN-Rolle wird aus der vorhandenen `device_type`-Klassifizierung abgeleitet, statt pauschal „Endgerät“ zu melden. Erwartung: Desktop-PC = Endgerät/LAN, Alexa = Endgerät/WLAN, Repeater-Flur = Repeater/WLAN, **sofern `device_type` tatsächlich `repeater` enthält**. Letzte Änderung noch nicht in HA verifiziert. Die Rollenanzeige ist ein Fallback auf „Endgerät“ bei unbekanntem `device_type` und sollte vor einer Freigabe auf irreführende Klassifizierung geprüft werden.
+- Keine Änderungen an der eigentlichen Topologieberechnung durch die letzten Sensor-Anpassungen.
+
+## Offene Prüfungen vor Merge
+
+1. GitHub-Actions/CI des aktuellen PR-Heads prüfen; der PR umfasst 40 Commits und 11 Dateien, darunter auch Backend-Code, und ist noch Draft.
+2. In Home Assistant prüfen: LAN-Geräterolle, Repeater-Geräterolle, korrekte WLAN-Rolle, Stabilität der Karte bei Refresh und Verhalten bei Datenänderungen.
+3. PR-Diff und Regressionsrisiken prüfen; erst anschließend PR #48 nach `develop` mergen. **Kein Merge nach `main`.**
+4. Nach Merge diese Statusdatei auf `develop` mit dem tatsächlichen Merge-Commit und den bestätigten Testergebnissen aktualisieren.
+
+## Separat vorgemerkt: Standard-SNMP
+
+- Brother ADS-4700W (192.168.178.71) antwortet auf SNMPv2c (`sysDescr`: Brother NC-10h, Firmware 3.23); IF-MIB meldet `eth0` aktiv, `wlan0`/`wlan1` inaktiv sowie Ethernet-MAC `C8:A3:62:B8:49:E2`.
+- LLDP-Remote-MIB unter `1.0.8802.1.1.2.1.4` nicht verfügbar. Daraus folgt **keine** gesicherte direkte Portzuordnung.
+- SG3428-Abfrage mit SNMPv2c/`public` ergab Timeout; Switch unterstützt SNMPv3. Später mit vorhandener SNMPv3-Konfiguration prüfen, ohne Hersteller-Sonderlogik zu ergänzen.
+
+---
+
 # Aktueller Entwicklungsstand – 11.11.2026
 
 **Branch:** `develop` · **Letzter Merge:** PR #39 (WLAN Connection Metadata und Repeater-Rohdatendiagnose), Squash-Commit `cecb8a35b17569f62abca257305970442400751b`. **Status:** Entwicklungsstand, kein Release auf `main`.
@@ -290,3 +318,19 @@ Server-3
 - **GitHub-CI:** Für Commit `8f1af1c17e9a97f214daf733841e1eb777fc51be` waren `Validate #866` und `Internal topology tests #169` erfolgreich.
 - **Unverändert:** AVM-Mesh als Topologiegrundlage, keine hartcodierten Verbindungen, LLDP nur bei eindeutigem Nachweis, FDB nicht als direkter Kabelnachweis, WLAN-Geräte ohne LAN-Portgeschwindigkeit. Der bereits zurückgestellte Hinweis zur Größe einzelner Discovery-Attribute (16 KB) ist nicht Bestandteil dieser Änderung.
 - **Nächster Schritt:** Änderungen nach `develop` zusammenführen; `main` unverändert lassen. Für Folgearbeiten von `develop` ausgehen.
+
+## 15.11.2026 – LLDP-Abfragediagnose (HA-Test ausstehend)
+
+- Aktueller Feature-Branch `feature/network-map-card-0729`, inklusive der jüngsten Geräterollen-Korrekturen.
+- Bei SG3428 (MAC `D4:D6:DF:0E:1B:54`) meldete der Geräteerkennungssensor sowohl im aktuellen Stand als auch in `6b450a2` `lldp_neighbor_count: 0` und `lldp_neighbors: []`; FDB und Port-Telemetrie waren erfolgreich. Die Ursache ist noch nicht belegt.
+- `discovery/lldp.py` erfasst jetzt getrennte Diagnosewerte für lokalen Port-Walk und Remote-Nachbartabelle: Status, Anzahl, Dauer und Fehlerphase. Zeitüberschreitungen und SNMP-Fehler werden als Kategorien statt als bloß leere Liste sichtbar. Keine Zugangsdaten oder Fehlermeldungstexte im Sensor.
+- `discovery/snmp.py` veröffentlicht diese Werte als JSON-Attribut `lldp_diagnostics` im bestehenden Geräteerkennungssensor.
+- Die bestehende Rückgabe der LLDP-Nachbarliste und das 2,5-Sekunden-Gesamtlimit bleiben unverändert. Keine Änderung an Rollen, Topologie oder Netzwerkkarte.
+- **Offen:** GitHub-CI und HA-Praxistest; anschließend SG3428-Geräteerkennung manuell starten und `lldp_diagnostics` auswerten.
+
+
+### 15.11.2026 – LLDP-Timeout auf 10 Sekunden erhöht
+
+- HA-Praxistest des Diagnoseattributs `lldp_diagnostics`: `status=timeout`, `local_ports_status=ok`, `local_ports_count=28`, `local_ports_duration_ms=1091`, `failed_phase=remote`, `remote_duration_ms=1409`, `duration_ms=2500`; FDB und Port-Telemetrie weiterhin erfolgreich.
+- Auf Basis dieses Befunds `WALK_TIMEOUT` in `discovery/lldp.py` von 2,5 auf 10,0 Sekunden erhöht (Commit `9817385`). Sonst keine Änderung an der LLDP-Verarbeitung oder an Topologie/Rollen/Karte.
+- **Noch offen:** Installation und erneuter HA-Test mit manuell gestarteter Geräteerkennung des SG3428; `lldp_diagnostics`, `lldp_neighbor_count` und `lldp_neighbors` prüfen. Nicht als behoben markieren, bevor Nachbarn tatsächlich gelesen wurden.
