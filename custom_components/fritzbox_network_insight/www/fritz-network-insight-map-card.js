@@ -1,295 +1,112 @@
-/* FRITZ!Box Network Insight – standalone topology card.
- * Read-only adapter for the existing topology_view service. No topology inference.
- */
+/* Network Insight – Network Center view. Read-only; no topology inference. */
 class FritzNetworkInsightMapCard extends HTMLElement {
-  static getStubConfig() { return { design: "lcars", height: 620 }; }
-  setConfig(config) {
-    this.config = { design: "lcars", height: 620, refresh_seconds: 60, ...config };
-    this._data = null;
-    this._error = "";
-    this._selected = null;
+  static getStubConfig(){return {design:"lcars",height:620,refresh_seconds:60};}
+  setConfig(config){this.config={design:"lcars",height:620,refresh_seconds:60,...config};this._data=null;this._error="";this._search="";this._filter="all";this._expanded=new Set();this._showMap=false;}
+  connectedCallback(){this._active=true;this._load();this._timer=setInterval(()=>this._load(),Math.max(15,Number(this.config?.refresh_seconds)||60)*1000);}
+  disconnectedCallback(){this._active=false;clearInterval(this._timer);}
+  set hass(hass){this._hass=hass;if(this._active&&!this._data&&!this._loading)this._load();}
+  getCardSize(){return 8;}
+  getGridOptions(){return {columns:"full",rows:"auto"};}
+  async _load(){
+    if(!this._hass||this._loading||!this._active)return;
+    this._loading=true;
+    try{
+      const response=await this._hass.callWS({type:"call_service",domain:"fritzbox_network_insight",service:"topology_view",service_data:this.config.entry_id?{entry_id:this.config.entry_id}:{},return_response:true});
+      const data=response?.response??response?.service_response??response;
+      if(!Array.isArray(data?.nodes)||!Array.isArray(data?.edges))throw Error(data?.error||"Keine gültigen Topologiedaten erhalten");
+      this._data=data;this._error="";
+    }catch(e){this._error=String(e?.message||e);}finally{this._loading=false;if(this._active)this.render();}
   }
-  connectedCallback() {
-    this._active = true;
-    this._load();
-    this._timer = setInterval(() => this._load(), Math.max(15, Number(this.config?.refresh_seconds) || 60) * 1000);
-  }
-  disconnectedCallback() {
-    this._active = false;
-    clearInterval(this._timer);
-  }
-  set hass(hass) {
-    this._hass = hass;
-    if (this._active && !this._data && !this._loading) this._load();
-  }
-  getCardSize() { return 8; }
-  getGridOptions() { return { columns: "full", rows: "auto" }; }
-  async _load() {
-    if (!this._hass || this._loading || !this._active) return;
-    this._loading = true;
-    try {
-      const response = await this._hass.callWS({
-        type: "call_service", domain: "fritzbox_network_insight",
-        service: "topology_view",
-        service_data: this.config.entry_id ? { entry_id: this.config.entry_id } : {},
-        return_response: true
-      });
-      const data = response?.response ?? response?.service_response ?? response;
-      if (!data || !Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
-        throw new Error(data?.error || "Keine gültigen Topologiedaten erhalten");
-      }
-      this._data = data;
-      this._error = "";
-    } catch (error) {
-      this._error = String(error?.message || error);
-    } finally {
-      this._loading = false;
-      if (this._active) this.render();
-    }
-  }
-  _esc(value) {
-    return String(value ?? "").replace(/[&<>"']/g, c => ({
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-    })[c]);
-  }
-  _kind(node) {
-    const kind = String(node.device_type || "").toLowerCase();
-    const role = String(node.mesh_role || "").toLowerCase();
-    if (kind.includes("router") || role.includes("router") || role.includes("master")) return "router";
-    if (kind.includes("switch")) return "switch";
-    if (kind.includes("repeater") || role.includes("repeater")) return "repeater";
+  _esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+  _id(n){return String(n.id||n.mac||"").toUpperCase();}
+  _kind(n){
+    const type=String(n.device_type||"").toLowerCase(),role=String(n.mesh_role||"").toLowerCase();
+    if(type.includes("router")||role.includes("router")||role.includes("master"))return "router";
+    if(type.includes("switch"))return "switch";
+    if(type.includes("repeater")||role.includes("repeater"))return "repeater";
     return "device";
   }
-  _layout(nodes, links) {
-    // Ported from Network Map 0.7.29: breadth-first component hierarchy,
-    // leaf spacing, parent centered above children. Placement only.
-    const map = new Map(nodes.map(n => [String(n.id || n.mac).toUpperCase(), n]));
-    const components = nodes.filter(n => this._kind(n) !== "device");
-    const ids = new Set(components.map(n => String(n.id || n.mac).toUpperCase()));
-    const children = new Map([...ids].map(id => [id, []]));
-    const parents = new Map([...ids].map(id => [id, []]));
-    for (const link of links) {
-      if (!ids.has(link.source) || !ids.has(link.target)) continue;
-      children.get(link.source).push(link.target);
-      parents.get(link.target).push(link.source);
-    }
-    const root = components.find(n => this._kind(n) === "router" && !parents.get(String(n.id || n.mac).toUpperCase()).length)
-      || components.find(n => this._kind(n) === "router") || components[0];
-    const rootId = root ? String(root.id || root.mac).toUpperCase() : "";
-    const treeChildren = new Map([...ids].map(id => [id, []]));
-    const seen = new Set(rootId ? [rootId] : []);
-    const queue = rootId ? [rootId] : [];
-    while (queue.length) {
-      const parentId = queue.shift();
-      for (const child of children.get(parentId) || []) {
-        if (seen.has(child)) continue;
-        seen.add(child);
-        treeChildren.get(parentId).push(child);
-        queue.push(child);
+  _connection(n){
+    const compact=String(n.mac||n.id||"").replace(/:/g,"").toLowerCase();
+    const s=this._hass?.states?.["sensor.fritzbox_network_insight_"+compact+"_connection_peer"];
+    if(!s||["unknown","unavailable","none",""].includes(String(s.state).toLowerCase()))return null;
+    return {name:String(s.state),mac:String(s.attributes?.connected_to_mac||"").toUpperCase()};
+  }
+  _online(n){
+    if(typeof n.online==="boolean")return n.online;
+    if(typeof n.is_online==="boolean")return n.is_online;
+    const compact=String(n.mac||n.id||"").replace(/:/g,"").toLowerCase();
+    const s=this._hass?.states?.["sensor.fritzbox_network_insight_"+compact+"_status"];
+    if(!s)return null;
+    const v=String(s.state).toLowerCase();
+    if(["online","on","connected","verbunden"].includes(v))return true;
+    if(["offline","off","disconnected","getrennt"].includes(v))return false;
+    return null;
+  }
+  _view(){
+    const nodes=(this._data?.nodes||[]).filter(n=>n.known_host===true);
+    const byId=new Map(nodes.map(n=>[this._id(n),n]));
+    const byName=new Map(nodes.map(n=>[String(n.name||"").trim().toLowerCase(),n]));
+    const groups=new Map(),assigned=new Set();
+    const components=nodes.filter(n=>this._kind(n)!=="device");
+    for(const c of components)groups.set(this._id(c),[]);
+    for(const n of nodes){
+      if(this._kind(n)!=="device")continue;
+      const rel=this._connection(n);
+      let parent=rel&&(byId.get(rel.mac)||byName.get(rel.name.trim().toLowerCase()));
+      if(!parent){
+        const edge=(this._data.edges||[]).find(e=>e.target===this._id(n)&&groups.has(String(e.source).toUpperCase())&&(e.kind==="mesh_wlan"&&e.evidence==="avm_mesh"||e.kind==="confirmed_lan"&&e.physical_link_confirmed===true));
+        if(edge)parent=byId.get(String(edge.source).toUpperCase());
       }
+      if(parent&&groups.has(this._id(parent))){groups.get(this._id(parent)).push(n);assigned.add(this._id(n));}
     }
-    const disconnected = [...ids].filter(id => !seen.has(id));
-    const roots = [rootId, ...disconnected].filter(Boolean);
-    const leafIndex = new Map(), depth = new Map();
-    let cursor = 0;
-    const visit = (id, d, stack = new Set()) => {
-      if (stack.has(id)) return;
-      depth.set(id, d);
-      const kids = treeChildren.get(id) || [];
-      if (!kids.length) leafIndex.set(id, cursor++);
-      else kids.forEach(child => visit(child, d + 1, new Set([...stack, id])));
-    };
-    roots.forEach(id => visit(id, 0));
-    const leafCount = Math.max(1, cursor);
-    const width = Math.max(920, this.clientWidth || 0, 56 + leafCount * 220);
-    const positions = new Map();
-    const place = id => {
-      const kids = treeChildren.get(id) || [];
-      const x = kids.length
-        ? kids.map(place).reduce((a,b) => a + b, 0) / kids.length
-        : 28 + (width - 56) * ((leafIndex.get(id) + .5) / leafCount);
-      positions.set(id, {x, y: 32 + (depth.get(id) || 0) * 176});
-      return x;
-    };
-    roots.forEach(place);
-    return {positions, map, width, height: Math.max(220, 32 + (Math.max(0, ...depth.values()) + 1) * 176 + 20)};
+    return {nodes,components,groups,other:nodes.filter(n=>this._kind(n)==="device"&&!assigned.has(this._id(n)))};
   }
-  _deviceConnection(node) {
-    // The exact entity IDs and evidence are already produced by the integration.
-    // Read them, do not infer a physical cable from a switch forwarding table.
-    const compact = String(node.mac || node.id || "").replace(/:/g, "").toLowerCase();
-    const peer = this._hass?.states?.[`sensor.fritzbox_network_insight_${compact}_connection_peer`];
-    if (!peer || ["unknown", "unavailable", "none", ""].includes(String(peer.state).toLowerCase())) return null;
-    const evidence = String(peer.attributes?.evidence || "");
-    return {
-      name: peer.state,
-      mac: peer.attributes?.connected_to_mac || "",
-      evidence,
-      confirmed: peer.attributes?.direct_connection === "confirmed" ||
-        evidence === "lldp_last_observed"
-    };
-  }
-  render() {
-    if (!this.config) return;
-    const esc = v => this._esc(v);
-    const data = this._data;
-    // Only current FRITZ!Box hosts, never stale LLDP/FDB/Mesh-only identities.
-    const nodes = (data?.nodes || []).filter(n => n.known_host === true);
-    const currentIds = new Set(nodes.map(n => String(n.id || n.mac).toUpperCase()));
-    const byName = new Map(nodes.map(n => [String(n.name || "").toLowerCase(), String(n.id || n.mac).toUpperCase()]));
-    const links = [];
-    const seen = new Set();
-    const add = (source, target, kind, evidence, port = "") => {
-      source = String(source || "").toUpperCase();
-      target = String(target || "").toUpperCase();
-      if (!currentIds.has(source) || !currentIds.has(target) || source === target) return;
-      const key = [source, target].sort().join("|") + "|" + kind;
-      if (seen.has(key)) return;
-      seen.add(key);
-      links.push({ source, target, kind, evidence, port });
-    };
-    for (const edge of data?.edges || []) {
-      if (edge.kind === "confirmed_lan" && edge.physical_link_confirmed === true)
-        add(edge.source, edge.target, "lan", edge.evidence, edge.port);
-      else if (edge.kind === "mesh_wlan" && edge.evidence === "avm_mesh")
-        add(edge.source, edge.target, "wlan", edge.evidence, edge.port);
-    }
-    for (const node of nodes) {
-      const relation = this._deviceConnection(node);
-      if (!relation) continue;
-      const peer = String(relation.mac || "").toUpperCase() ||
-        byName.get(String(relation.name || "").toLowerCase());
-      add(peer, node.id || node.mac,
-        relation.confirmed ? "lan" : "reachability", relation.evidence);
-    }
-    const edges = links;
-    const {positions, width, height, map} = this._layout(nodes, links);
-    const kindLabel = { router: "Router", switch: "Switch", repeater: "Repeater", device: "Gerät" };
-    const kindIcon = { router: "◉", switch: "▦", repeater: "⌁", device: "●" };
-    const design = ["lcars","cyber","modern-dark","modern-light"].includes(this.config.design)
-      ? this.config.design : "lcars";
-    const selected = map.get(String(this._selected || "").toUpperCase());
-    const details = selected ? edges.filter(e => e.source === String(this._selected).toUpperCase() || e.target === String(this._selected).toUpperCase()) : [];
-    const selectedConnection = selected ? this._deviceConnection(selected) : null;
-    // Original 0.7.29 presentation: component nodes with their endpoint
-    // groups, not a separate card and line for every individual endpoint.
-    const assignedGroups = new Map([...positions.keys()].map(id => [id, []]));
-    const assigned = new Set();
-    for (const node of nodes.filter(n => this._kind(n) === "device")) {
-      const id = String(node.id || node.mac).toUpperCase();
-      const parents = edges.filter(e => e.target === id && positions.has(e.source));
-      const fallback = edges.filter(e => e.source === id && positions.has(e.target));
-      const parent = parents[0]?.source || fallback[0]?.target;
-      if (!parent) continue;
-      assignedGroups.get(parent).push(node);
-      assigned.add(id);
-    }
-    const nodeButtons = [...positions.entries()].map(([id,p]) => {
-      const n = map.get(id);
-      const kind = this._kind(n);
-      const count = (assignedGroups.get(id) || []).length;
-      return `<button class="fnm-node ${kind}" data-node="${esc(id)}" style="left:${p.x-95}px;top:${p.y}px">
-        <span class="fnm-symbol">${kindIcon[kind]}</span>
-        <span class="fnm-name"><strong>${esc(n.name || n.mac)}</strong><small>${kindLabel[kind]} · ${esc(n.ip_address || "")}</small></span>
-        <span class="fnm-count">${count}</span>
-      </button>`;
+  render(){
+    if(!this.config)return;
+    const esc=v=>this._esc(v),data=this._data,view=this._view();
+    const {nodes,components,groups,other}=view;
+    const search=this._search.trim().toLowerCase();
+    const matches=n=>!search||[n.name,n.mac,n.ip_address].some(v=>String(v||"").toLowerCase().includes(search));
+    const filter=n=>this._filter==="all"||this._filter===this._kind(n);
+    const shown=n=>matches(n)&&filter(n);
+    const online=nodes.filter(n=>this._online(n)===true).length;
+    const offline=nodes.filter(n=>this._online(n)===false).length;
+    const connectionCount=[...groups.values()].reduce((sum,a)=>sum+a.length,0);
+    const item=n=>'<button class="fnc-device" data-device="'+esc(this._id(n))+'"><span class="fnc-dot '+(this._online(n)===true?"on":"")+'"></span><span class="fnc-device-text"><strong>'+esc(n.name||n.mac)+'</strong><small>'+esc(this._kind(n)==="device"?"Endgerät":this._kind(n))+' · '+esc(n.ip_address||"")+'</small></span></button>';
+    const tiles=components.filter(c=>filter(c)||this._filter==="device").map(c=>{
+      const devices=groups.get(this._id(c))||[];
+      const visible=devices.filter(shown);
+      if(search&&!matches(c)&&!visible.length)return "";
+      if(this._filter==="device"&&!visible.length)return "";
+      const id=this._id(c),expanded=this._expanded.has(id);
+      return '<section class="fnc-group"><button class="fnc-group-head" data-group="'+esc(id)+'"><span><strong>'+esc(c.name||c.mac)+'</strong><small>'+devices.length+' direkt verbundene Geräte</small></span><b>'+(expanded?"−":"+")+'</b></button>'+(expanded?'<div class="fnc-group-items">'+(visible.map(item).join("")||'<span class="fnc-empty">Keine passenden Geräte</span>')+'</div>':"")+'</section>';
     }).join("");
-    const lines = edges.filter(e => positions.has(e.source) && positions.has(e.target)).map(e => {
-      const a = positions.get(e.source), b = positions.get(e.target);
-      const upper = a.y <= b.y ? a : b, lower = a.y <= b.y ? b : a;
-      const dashed = e.kind !== "lan";
-      return `<path d="M ${upper.x} ${upper.y+72} C ${upper.x} ${(upper.y+lower.y)/2+45}, ${lower.x} ${(upper.y+lower.y)/2+45}, ${lower.x} ${lower.y}" class="${e.kind === "reachability" ? "reachability" : dashed ? "wlan" : "lan"}"><title>${esc(e.evidence)}${e.port ? " · "+esc(e.port):""}</title></path>`;
-    }).join("");
-    const endDevices = nodes.filter(n => this._kind(n) === "device");
-    const linkedDevices = endDevices.filter(n => assigned.has(String(n.id || n.mac).toUpperCase()) || this._deviceConnection(n) ||
-      edges.some(e => e.source === (n.id || n.mac) || e.target === (n.id || n.mac)));
-    const unassigned = endDevices.filter(n => !linkedDevices.includes(n));
-    const deviceItems = arr => arr.map(n => {
-      const connection = this._deviceConnection(n);
-      const relation = connection
-        ? `<small title="${esc(connection.evidence)}">${connection.confirmed ? "Direkt: " : "Über Switch: "}${esc(connection.name)}</small>`
-        : "";
-      return `<button class="fnm-device" data-node="${esc(n.id || n.mac)}"><span>●</span>${esc(n.name || n.mac)}${relation}<small>${esc(n.ip_address || "")}</small></button>`;
-    }).join("");
-    const clusterCards = [...assignedGroups.entries()].filter(([,devices]) => devices.length).map(([id, devices]) => {
-      const p = positions.get(id);
-      return `<button class="fnm-cluster" data-node="${esc(id)}" style="left:${p.x-95}px;top:${p.y+85}px">
-        <strong>${devices.length} Endgeräte</strong>
-        <span>${esc(devices.slice(0,3).map(n => n.name || n.mac).join(", "))}${devices.length>3?" …":""}</span>
-      </button>`;
-    }).join("");
-    const status = this._error ? `<div class="fnm-error">${esc(this._error)}</div>`
-      : !data ? '<div class="fnm-info">Topologiedaten werden geladen …</div>' : "";
-    this.innerHTML = `
-      <ha-card class="fnm-card ${design}">
-        <div class="fnm-wrap">
-          <header class="fnm-toolbar"><strong>NETZWERKÜBERSICHT</strong>
-            <span>${nodes.length} Geräte · ${edges.length} angezeigte Zuordnungen</span>
-            <button class="fnm-refresh" title="Aktualisieren">↻</button>
-          </header>
-          ${status}
-          ${data ? `
-          <div class="fnm-graph-scroll" style="max-height:${Math.max(250, Number(this.config.height) || 620)}px">
-            <div class="fnm-graph" style="width:${width}px;height:${height}px">
-              <svg class="fnm-lines" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">${lines}</svg>
-              ${nodeButtons}\n              ${clusterCards}
-            </div>
-          </div>
-          <div class="fnm-legend"><span>━ Bestätigtes LAN</span><span>┄ Mesh-WLAN</span><span>┄ FDB: Erreichbarkeit, kein Kabelnachweis</span></div>
-          ${selected ? `<section class="fnm-detail"><button class="fnm-close">×</button><strong>${esc(selected.name || selected.mac)}</strong>
-             <div>${esc(selected.mac)} · ${esc(selected.ip_address || "")}</div>
-             <div>${details.map(e => `${esc(map.get(e.source === String(this._selected).toUpperCase() ? e.target : e.source)?.name || (e.source === this._selected ? e.target : e.source))} · ${esc(e.evidence)}${e.port ? " · "+esc(e.port) : ""}`).join("<hr>") || (selectedConnection ? `${esc(selectedConnection.confirmed ? "Direkt verbunden mit" : "Erreichbar über")} ${esc(selectedConnection.name)} (${esc(selectedConnection.evidence)})` : "Keine Zuordnung vorhanden")}</div>
-           </section>` : ""}
-          <details class="fnm-devices"><summary>Endgeräte nach vorhandener Zuordnung (${linkedDevices.length})</summary><div class="fnm-grid">${deviceItems(linkedDevices)}</div></details>
-          <details class="fnm-devices"><summary>Ohne vorhandene Zuordnung (${unassigned.length})</summary><div class="fnm-grid">${deviceItems(unassigned)}</div></details>
-          ` : ""}
-        </div>
-      </ha-card>
-      <style>
-        :host{display:block;width:100%;min-width:0}
-        .fnm-card{--bg:#101827;--fg:#f5f7fa;--line:#b5c0cf;--router:#ffae00;--switch:#cc6666;--repeater:#9999ff;--tile:#202b3b}
-        .fnm-card.cyber{--bg:#080d18;--fg:#e6fbff;--line:#00a9c7;--router:#00f0ff;--switch:#00bfa5;--repeater:#9b6bff;--tile:#101a2b}
-        .fnm-card.modern-dark{--bg:#171b22;--fg:#f1f5f9;--line:#64748b;--router:#2563eb;--switch:#0f766e;--repeater:#7c3aed;--tile:#222a35}
-        .fnm-card.modern-light{--bg:#fff;--fg:#1f2937;--line:#94a3b8;--router:#2563eb;--switch:#0f766e;--repeater:#7c3aed;--tile:#f1f5f9}
-        .fnm-wrap{background:var(--bg);color:var(--fg);padding:12px;border:1px solid var(--line);border-radius:12px}
-        .fnm-toolbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-size:12px;padding:4px 2px 14px}
-        .fnm-toolbar strong{font-size:15px;letter-spacing:.06em}.fnm-toolbar span{opacity:.75}
-        .fnm-refresh,.fnm-close{margin-left:auto;border:1px solid var(--line);border-radius:7px;background:var(--tile);color:var(--fg);padding:5px 11px;cursor:pointer}
-        .fnm-graph-scroll{overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
-        .fnm-graph{position:relative;margin:auto;min-width:100%}
-        .fnm-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
-        .fnm-lines path{fill:none;stroke:var(--line);stroke-width:2.5;opacity:.85}
-        .fnm-lines .wlan{stroke-dasharray:8 7;stroke:var(--repeater)}
-        .fnm-lines .reachability{stroke-dasharray:3 7;stroke:#e6a04b;opacity:.55}
-        .fnm-node{position:absolute;display:flex;align-items:center;gap:8px;width:190px;min-height:73px;box-sizing:border-box;padding:10px;border:1px solid var(--line);border-top:4px solid var(--switch);border-radius:10px;background:var(--tile);color:var(--fg);cursor:pointer;text-align:left}
-        .fnm-node.router{border-top-color:var(--router)}.fnm-node.repeater{border-top-color:var(--repeater)}
-        .fnm-node:hover,.fnm-device:hover{filter:brightness(1.2)}
-        .fnm-symbol{font-size:23px}.fnm-name{min-width:0;flex:1}.fnm-name strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.fnm-name small{display:block;opacity:.7;font-size:10px;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fnm-cluster{position:absolute;width:190px;min-height:52px;box-sizing:border-box;border:1px dashed var(--line);border-radius:8px;background:var(--bg);color:var(--fg);padding:8px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:5px}
-        .fnm-cluster strong{font-size:11px}.fnm-cluster span{font-size:10px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        .fnm-count{opacity:.7;font-size:11px}.fnm-legend{display:flex;gap:18px;flex-wrap:wrap;font-size:11px;opacity:.75;padding:10px 2px}
-        .fnm-detail{position:relative;border:1px solid var(--line);border-radius:9px;background:var(--tile);padding:14px;font-size:12px}
-        .fnm-detail strong{font-size:15px}.fnm-detail>div{margin-top:9px}.fnm-close{float:right}
-        .fnm-devices{margin-top:10px;border:1px solid var(--line);border-radius:9px;padding:10px;font-size:12px}
-        .fnm-devices summary{cursor:pointer}.fnm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-top:12px}
-        .fnm-device{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:7px;background:var(--tile);color:var(--fg);padding:10px;text-align:left;cursor:pointer;min-width:0}
-        .fnm-device small{margin-left:auto;opacity:.6}.fnm-error{color:#ff9a9a;padding:12px}.fnm-info{padding:12px}
-      </style>`;
-    this.querySelector(".fnm-refresh")?.addEventListener("click", () => this._load());
-    this.querySelector(".fnm-close")?.addEventListener("click", () => { this._selected = null; this.render(); });
-    this.querySelectorAll("[data-node]").forEach(button => button.addEventListener("click", () => {
-      this._selected = button.dataset.node; this.render();
-    }));
+    const otherVisible=other.filter(shown);
+    const allCount=nodes.length;
+    const stats=[["Geräte gesamt",allCount],["Verbindungen",connectionCount],["Online",online],["Offline",offline]];
+    this.innerHTML='<ha-card class="fnc-card"><div class="fnc-wrap"><h2>Network Center</h2>'+
+      '<div class="fnc-stats">'+stats.map(([label,value])=>'<div class="fnc-stat"><strong>'+value+'</strong><small>'+label+'</small></div>').join("")+'</div>'+
+      '<div class="fnc-meta"><span>Router: '+components.filter(n=>this._kind(n)==="router").length+'</span><span>Switch: '+components.filter(n=>this._kind(n)==="switch").length+'</span><span>Repeater: '+components.filter(n=>this._kind(n)==="repeater").length+'</span></div>'+
+      '<div class="fnc-actions"><button class="fnc-map-toggle">'+(this._showMap?"← Network Center":"→ Netzwerk-Map öffnen")+'</button></div>'+
+      (this._error?'<p class="fnc-error">'+esc(this._error)+'</p>':"")+
+      (!data?'<p>Topologiedaten werden geladen …</p>':
+      '<div class="fnc-controls"><input class="fnc-search" type="search" placeholder="Gerät, IP oder MAC suchen ..." value="'+esc(this._search)+'"><select class="fnc-filter"><option value="all">Alle Geräte</option><option value="router">Router</option><option value="switch">Switches</option><option value="repeater">Repeater</option><option value="device">Endgeräte</option></select></div>'+
+      (this._showMap?'<p class="fnc-info">Die grafische Netzwerk-Map wird in einem späteren Schritt angepasst. Die Network-Center-Ansicht bleibt unverändert verfügbar.</p>':
+      '<h3>NETZWERKKOMPONENTEN UND DIREKT VERBUNDENE GERÄTE</h3><div class="fnc-groups">'+tiles+'</div><h3>WEITERE GERÄTE</h3><div class="fnc-other">'+otherVisible.map(item).join("")+'</div>')+
+      '<footer>Datenquelle: sensor.netzwerk_topologie · Beziehungen werden ausschließlich aus den Sensorattributen übernommen.</footer>')+
+      '</div></ha-card><style>'+
+      ':host{display:block;width:100%;min-width:0}.fnc-card{background:#161a20;color:#e7eaf0;border-radius:30px;overflow:hidden}.fnc-wrap{padding:14px;box-sizing:border-box;font-family:inherit}.fnc-wrap h2{font-size:22px;font-weight:500;margin:0 0 32px}.fnc-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.fnc-stat{border:1px solid #344052;border-radius:10px;padding:12px;min-height:75px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center}.fnc-stat strong{font-size:26px;color:#03a9f4;line-height:1.1}.fnc-stat small{font-size:12px;color:#b8c8e0}.fnc-meta{display:flex;gap:12px;margin-top:12px;font-size:12px;color:#a8bde0}.fnc-actions{display:flex;justify-content:flex-end;margin:12px 0 10px}.fnc-map-toggle{background:#03a9f4;color:#071522;border:0;border-radius:9px;padding:12px 18px;cursor:pointer;font-weight:600}.fnc-controls{display:flex;gap:8px;margin:8px 0 16px}.fnc-search,.fnc-filter{background:#222c3a;border:1px solid #354357;border-radius:9px;color:#e7eaf0;padding:12px;font:inherit;box-sizing:border-box}.fnc-search{flex:1;min-width:0}.fnc-filter{width:135px}.fnc-wrap h3{font-size:12px;margin:16px 0 10px;font-weight:700}.fnc-groups{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.fnc-group{min-width:0}.fnc-group-head{width:100%;min-height:72px;display:flex;align-items:center;justify-content:space-between;text-align:left;gap:10px;border:1px solid #344052;background:#222c3a;color:#e7eaf0;border-radius:10px;padding:12px;cursor:pointer}.fnc-group-head strong,.fnc-device strong{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fnc-group-head small,.fnc-device small{display:block;font-size:11px;color:#a6bce1;margin-top:5px}.fnc-group-head b{color:#03a9f4}.fnc-group-items{display:grid;gap:5px;padding-top:6px}.fnc-other{display:flex;flex-wrap:wrap;gap:8px}.fnc-device{display:flex;align-items:center;gap:8px;min-width:190px;max-width:100%;border:1px solid #344052;border-radius:9px;background:#222c3a;color:#e7eaf0;text-align:left;padding:10px;cursor:pointer}.fnc-group-items .fnc-device{width:100%;min-width:0}.fnc-device-text{min-width:0}.fnc-dot{width:8px;height:8px;flex:none;background:#697383;border-radius:50%}.fnc-dot.on{background:#31cb8b}.fnc-wrap footer{font-size:11px;color:#a6bce1;margin-top:14px}.fnc-error{color:#ff9999}.fnc-info{padding:24px;border:1px solid #344052;border-radius:10px}@media(max-width:850px){.fnc-groups{grid-template-columns:repeat(2,minmax(0,1fr))}.fnc-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:520px){.fnc-groups{grid-template-columns:1fr}.fnc-controls{flex-wrap:wrap}.fnc-filter{width:100%}}'+
+      '</style>';
+    const input=this.querySelector(".fnc-search");
+    if(input){input.addEventListener("input",e=>{const pos=e.target.selectionStart;this._search=e.target.value;this.render();const next=this.querySelector(".fnc-search");next?.focus();try{next?.setSelectionRange(pos,pos);}catch(_){}});}
+    const select=this.querySelector(".fnc-filter");
+    if(select){select.value=this._filter;select.addEventListener("change",e=>{this._filter=e.target.value;this.render();});}
+    this.querySelector(".fnc-map-toggle")?.addEventListener("click",()=>{this._showMap=!this._showMap;this.render();});
+    this.querySelectorAll("[data-group]").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.group;if(this._expanded.has(id))this._expanded.delete(id);else this._expanded.add(id);this.render();}));
+    this.querySelectorAll("[data-device]").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.device;const n=nodes.find(x=>this._id(x)===id);if(n){const event=new CustomEvent("hass-more-info",{bubbles:true,composed:true,detail:{entityId:"sensor.fritzbox_network_insight_"+String(n.mac||"").replace(/:/g,"").toLowerCase()+"_status"}});this.dispatchEvent(event);}}));
   }
 }
-if (!customElements.get("fritz-network-insight-map-card")) {
-  customElements.define("fritz-network-insight-map-card", FritzNetworkInsightMapCard);
-}
-window.customCards = window.customCards || [];
-if (!window.customCards.some(c => c.type === "fritz-network-insight-map-card")) {
-  window.customCards.push({
-    type: "fritz-network-insight-map-card",
-    name: "FRITZ!Box Network Insight Map",
-    description: "Read-only topology map with verified LLDP and AVM Mesh connections"
-  });
-}
+if(!customElements.get("fritz-network-insight-map-card"))customElements.define("fritz-network-insight-map-card",FritzNetworkInsightMapCard);
+window.customCards=window.customCards||[];
+if(!window.customCards.some(c=>c.type==="fritz-network-insight-map-card"))window.customCards.push({type:"fritz-network-insight-map-card",name:"FRITZ!Box Network Insight Map",description:"Network Center using existing integration data"});
