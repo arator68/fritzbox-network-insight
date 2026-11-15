@@ -1,7 +1,8 @@
 /* Network Insight – Network Center view. Read-only; no topology inference. */
 class FritzNetworkInsightMapCard extends HTMLElement {
+  static getConfigElement(){return document.createElement("fritz-network-insight-map-card-editor");}
   static getStubConfig(){return {design:"modern-dark",height:620,refresh_seconds:60};}
-  setConfig(config){this.config={design:"modern-dark",height:620,refresh_seconds:60,...config};this._data=null;this._error="";this._search="";this._filter="all";this._expanded=new Set();this._showMap=false;this._selectedComponent=null;}
+  setConfig(config){this.config={title:"Network Center",theme:"auto",design:"modern-dark",heading_color:"",background_color:"",height:620,refresh_seconds:60,...config};this._data=null;this._error="";this._search="";this._filter="all";this._expanded=new Set();this._showMap=false;this._selectedComponent=null;}
   connectedCallback(){this._active=true;this._load();this._timer=setInterval(()=>this._load(),Math.max(15,Number(this.config?.refresh_seconds)||60)*1000);}
   disconnectedCallback(){this._active=false;clearInterval(this._timer);}
   set hass(hass){this._hass=hass;if(this._active&&!this._data&&!this._loading)this._load();}
@@ -125,7 +126,7 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     const otherVisible=other.filter(shown);
     const allCount=nodes.length;
     const stats=[["Geräte gesamt",allCount],["Verbindungen",connectionCount],["Online",online],["Offline",offline]];
-    this.innerHTML='<ha-card class="fnc-card"><div class="fnc-wrap"><h2>Network Center</h2>'+
+    this.innerHTML='<ha-card class="fnc-card"><div class="fnc-wrap"><h2>'+esc(this.config.title||"Network Center")+'</h2>'+
       '<div class="fnc-stats">'+stats.map(([label,value])=>'<div class="fnc-stat"><strong>'+value+'</strong><small>'+label+'</small></div>').join("")+'</div>'+
       '<div class="fnc-meta"><span>Router: '+components.filter(n=>this._kind(n)==="router").length+'</span><span>Switch: '+components.filter(n=>this._kind(n)==="switch").length+'</span><span>Repeater: '+components.filter(n=>this._kind(n)==="repeater").length+'</span></div>'+
       '<div class="fnc-actions"><button class="fnc-map-toggle">'+(this._showMap?"← Network Center":"→ Netzwerk-Map öffnen")+'</button></div>'+
@@ -138,6 +139,26 @@ class FritzNetworkInsightMapCard extends HTMLElement {
       '</div></ha-card><style>'+
       ':host{display:block;width:100%;min-width:0}.fnc-card{background:#161a20;color:#e7eaf0;border-radius:30px;overflow:hidden}.fnc-wrap{padding:14px;box-sizing:border-box;font-family:inherit}.fnc-wrap h2{font-size:22px;font-weight:500;margin:0 0 32px}.fnc-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.fnc-stat{border:1px solid #344052;border-radius:10px;padding:12px;min-height:75px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center}.fnc-stat strong{font-size:26px;color:#03a9f4;line-height:1.1}.fnc-stat small{font-size:12px;color:#b8c8e0}.fnc-meta{display:flex;gap:12px;margin-top:12px;font-size:12px;color:#a8bde0}.fnc-actions{display:flex;justify-content:flex-end;margin:12px 0 10px}.fnc-map-toggle{background:#03a9f4;color:#071522;border:0;border-radius:9px;padding:12px 18px;cursor:pointer;font-weight:600}.fnc-controls{display:flex;gap:8px;margin:8px 0 16px}.fnc-search,.fnc-filter{background:#222c3a;border:1px solid #354357;border-radius:9px;color:#e7eaf0;padding:12px;font:inherit;box-sizing:border-box}.fnc-search{flex:1;min-width:0}.fnc-filter{width:135px}.fnc-wrap h3{font-size:12px;margin:16px 0 10px;font-weight:700}.fnc-groups{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.fnc-group{min-width:0}.fnc-group-head{width:100%;min-height:72px;display:flex;align-items:center;justify-content:space-between;text-align:left;gap:10px;border:1px solid #344052;background:#222c3a;color:#e7eaf0;border-radius:10px;padding:12px;cursor:pointer}.fnc-group-head strong,.fnc-device strong{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fnc-group-head small,.fnc-device small{display:block;font-size:11px;color:#a6bce1;margin-top:5px}.fnc-group-head b{color:#03a9f4}.fnc-group-items{display:grid;gap:5px;padding-top:6px}.fnc-other{display:flex;flex-wrap:wrap;gap:8px}.fnc-device{display:flex;align-items:center;gap:8px;min-width:190px;max-width:100%;border:1px solid #344052;border-radius:9px;background:#222c3a;color:#e7eaf0;text-align:left;padding:10px;cursor:pointer}.fnc-group-items .fnc-device{width:100%;min-width:0}.fnc-device-text{min-width:0}.fnc-dot{width:8px;height:8px;flex:none;background:#697383;border-radius:50%}.fnc-dot.on{background:#31cb8b}.fnc-wrap footer{font-size:11px;color:#a6bce1;margin-top:14px}.fnc-error{color:#ff9999}.fnc-info{padding:24px;border:1px solid #344052;border-radius:10px}@media(max-width:850px){.fnc-groups{grid-template-columns:repeat(2,minmax(0,1fr))}.fnc-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:520px){.fnc-groups{grid-template-columns:1fr}.fnc-controls{flex-wrap:wrap}.fnc-filter{width:100%}}'+
       '</style>';
+
+    const palettes={
+      "modern-dark":{background:"#171b22",panel:"#222a35",border:"#394454",text:"#f1f5f9",accent:"#03a9f4"},
+      "modern-light":{background:"#ffffff",panel:"#f1f5f9",border:"#d8dee8",text:"#1f2937",accent:"#0284c7"},
+      "lcars":{background:"#071522",panel:"#102b3c",border:"#0b7896",text:"#e7f5ff",accent:"#00bfff"},
+      "cyber":{background:"#0c1422",panel:"#17273b",border:"#22658c",text:"#e6f5ff",accent:"#00c8ff"},
+      "custom":{background:"#171b22",panel:"#222a35",border:"#394454",text:"#f1f5f9",accent:"#03a9f4"}
+    };
+    const palette={...(palettes[this.config.design]||palettes["modern-dark"])};
+    if(this.config.theme==="light"&&this.config.design==="modern-dark")Object.assign(palette,palettes["modern-light"]);
+    const safe=v=>typeof v==="string"&&/^(#[0-9a-fA-F]{3,8}|(?:rgb|hsl)a?\([\d.,%\s]+\))$/.test(v.trim())?v.trim():null;
+    palette.background=safe(this.config.background_color)||palette.background;
+    const heading=safe(this.config.heading_color)||palette.text;
+    const force=(selector,props)=>this.querySelectorAll(selector).forEach(el=>Object.entries(props).forEach(([k,v])=>el.style.setProperty(k,v,"important")));
+    force(".fnc-card,.fnc-wrap",{"background-color":palette.background,color:palette.text});
+    force(".fnc-stat",{"background-color":palette.background,color:palette.text,"border-color":palette.border});
+    force(".fnc-stat strong,.fnc-group-head b",{"color":palette.accent});
+    force(".fnc-group-head,.fnc-device,.fnc-search,.fnc-filter",{"background-color":palette.panel,color:palette.text,"border-color":palette.border});
+    force(".fnc-wrap h2,.fnc-wrap h3",{"color":heading});
+    force(".fnc-map-toggle",{"background-color":palette.accent});
     const input=this.querySelector(".fnc-search");
     if(input){input.addEventListener("input",e=>{const pos=e.target.selectionStart;this._search=e.target.value;this.render();const next=this.querySelector(".fnc-search");next?.focus();try{next?.setSelectionRange(pos,pos);}catch(_){}});}
     const select=this.querySelector(".fnc-filter");
@@ -152,3 +173,30 @@ class FritzNetworkInsightMapCard extends HTMLElement {
 if(!customElements.get("fritz-network-insight-map-card"))customElements.define("fritz-network-insight-map-card",FritzNetworkInsightMapCard);
 window.customCards=window.customCards||[];
 if(!window.customCards.some(c=>c.type==="fritz-network-insight-map-card"))window.customCards.push({type:"fritz-network-insight-map-card",name:"FRITZ!Box Network Insight Map",description:"Network Center using existing integration data"});
+
+class FritzNetworkInsightMapCardEditor extends HTMLElement {
+  setConfig(config){this._config={title:"Network Center",theme:"auto",design:"modern-dark",heading_color:"",background_color:"",...config};this._render();}
+  set hass(hass){this._hass=hass;this._render();}
+  _render(){
+    if(!this._hass||!this._config)return;
+    if(!this._form){
+      this.innerHTML='<ha-form></ha-form><p style="font-size:12px;opacity:.8">Die Karte verwendet die vorhandenen Network-Insight-Daten.</p>';
+      this._form=this.querySelector("ha-form");
+      this._form.addEventListener("value-changed",ev=>{
+        ev.stopPropagation();this._config={...this._config,...ev.detail.value};
+        this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:this._config},bubbles:true,composed:true}));
+      });
+    }
+    const form=this._form;form.hass=this._hass;
+    form.data={entity:this._config.entity||"sensor.netzwerk_topologie",title:this._config.title,theme:this._config.theme,design:this._config.design,heading_color:this._config.heading_color,background_color:this._config.background_color};
+    form.schema=[
+      {name:"entity",label:"Entity",selector:{entity:{domain:"sensor"}}},
+      {name:"title",label:"Titel",selector:{text:{}}},
+      {name:"theme",label:"Theme",selector:{select:{mode:"dropdown",options:[{value:"auto",label:"Automatisch"},{value:"light",label:"Hell"},{value:"dark",label:"Dunkel"}]}}},
+      {name:"design",label:"Design",selector:{select:{mode:"dropdown",options:[{value:"modern-dark",label:"Modern Dark"},{value:"modern-light",label:"Modern Light"},{value:"lcars",label:"LCARS"},{value:"cyber",label:"Cyber"},{value:"custom",label:"Benutzerdefiniert"}]}}},
+      {name:"heading_color",label:"Überschriftenfarbe",selector:{text:{placeholder:"z. B. #00bfff (leer = Designfarbe)"}}},
+      {name:"background_color",label:"Hintergrundfarbe",selector:{text:{placeholder:"z. B. #111827 (leer = Designfarbe)"}}}
+    ];
+  }
+}
+if(!customElements.get("fritz-network-insight-map-card-editor"))customElements.define("fritz-network-insight-map-card-editor",FritzNetworkInsightMapCardEditor);
