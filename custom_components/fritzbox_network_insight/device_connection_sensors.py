@@ -59,7 +59,7 @@ class FritzBoxDeviceConnectionSensor(
         ):
             kind = "lan"
         if self._field == "type":
-            return (kind if kind in ("lan", "wlan") else None), {}
+            return (kind.upper() if kind in ("lan", "wlan") else None), {}
         if kind != "lan":
             return None, {}
 
