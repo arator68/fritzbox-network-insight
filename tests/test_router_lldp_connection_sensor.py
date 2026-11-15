@@ -69,7 +69,7 @@ class RouterLldpSensorTests(unittest.TestCase):
         return sensor._reading
 
     def test_unique_lldp_establishes_router_lan(self):
-        self.assertEqual(self.reading("type")[0], "lan")
+        self.assertEqual(self.reading("type")[0], "LAN")
         self.assertEqual(self.reading("peer")[0], "SG3428")
         self.assertEqual(self.reading("evidence")[0], "lldp_last_observed")
 
@@ -100,7 +100,7 @@ class RouterLldpSensorTests(unittest.TestCase):
         self.assertIsNone(self.reading("switch_port", peer_type="router")[0])
 
     def test_wlan_is_not_overridden(self):
-        self.assertEqual(self.reading("type", kind="wlan")[0], "wlan")
+        self.assertEqual(self.reading("type", kind="wlan")[0], "WLAN")
         self.assertIsNone(self.reading("switch_port", kind="wlan")[0])
 
 
