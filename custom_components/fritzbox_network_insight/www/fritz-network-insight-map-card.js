@@ -490,7 +490,17 @@ class FritzNetworkCenterCard extends HTMLElement {
     // Home Assistant updates hass frequently. Do not rebuild the entire card on each update.
     // The integration's topology_view response is the only source for card data.
     if (this._data && !this.querySelector(".fnc-root")) this.render();
+    const peerSignature = JSON.stringify(this._connectionPeerSignature());
+    if (this._data && peerSignature !== this._lastPeerSignature) {
+      this._lastPeerSignature = peerSignature;
+      this.render();
+    }
     if (this._mapOpen) this.querySelector("fritz-network-insight-topology-dialog")?.setAttribute("data-live", "true");
+  }
+  _connectionPeerSignature() {
+    return Object.entries(this._hass?.states || {})
+      .filter(([id]) => /^sensor\\.fritzbox_network_insight_[0-9a-f]{12}_(?:connection_peer|wlan_connection_peer)$/.test(id))
+      .map(([id, value]) => [id, value.state, value.attributes?.connected_to_mac, value.attributes?.peer_mac]);
   }
   async _load() {
     if (!this._hass || !this._active || this._loading) return;
@@ -499,7 +509,7 @@ class FritzNetworkCenterCard extends HTMLElement {
       const result = await this._hass.callWS({type:"call_service", domain:"fritzbox_network_insight", service:"topology_view", service_data:this.config?.entry_id?{entry_id:this.config.entry_id}:{}, return_response:true});
       const data = result?.response ?? result?.service_response ?? result;
       if (!Array.isArray(data?.nodes) || !Array.isArray(data?.edges)) throw Error(data?.error || "Invalid Network Insight topology");
-      const signature = JSON.stringify([data.nodes, data.edges]);
+      const signature = JSON.stringify([data.nodes, data.edges, data.branches || [], this._connectionPeerSignature()]);
       this._data = data;
       this._error = "";
       if (signature !== this._signature) {
@@ -547,11 +557,34 @@ class FritzNetworkCenterCard extends HTMLElement {
         if (memberId && memberId !== switchId) branchMembers.get(switchId).add(memberId);
       }
     }
-    const groups = nodes.filter(n => ["router","switch","repeater"].includes(n.kind)).map(n => ({
+    // The existing per-device connection sensors are authoritative for the
+    // Network Center's display grouping. No topology links are calculated here.
+    // Prefer MAC identifiers supplied by the integration over display names.
+    const componentIds = new Set(nodes.filter(n => ["router","switch","repeater"].includes(n.kind)).map(n => n.id));
+    const sensorParent = new Map();
+    for (const node of nodes) {
+      if (componentIds.has(node.id)) continue;
+      const key = String(node.mac || node.id).replace(/:/g, "").toLowerCase();
+      const lanPeer = this._hass.states?.[`sensor.fritzbox_network_insight_${key}_connection_peer`];
+      const wlanPeer = this._hass.states?.[`sensor.fritzbox_network_insight_${key}_wlan_connection_peer`];
+      for (const reading of [lanPeer, wlanPeer]) {
+        const value = String(reading?.state || "").trim().toLowerCase();
+        if (!value || ["unknown", "unavailable", "none", "unbekannt"].includes(value)) continue;
+        const peerMac = String(reading?.attributes?.connected_to_mac || reading?.attributes?.peer_mac || "").toUpperCase();
+        if (componentIds.has(peerMac) && peerMac !== node.id) {
+          sensorParent.set(node.id, peerMac);
+          break;
+        }
+      }
+    }
+    // Preserve existing edge/branch grouping only where no per-device
+    // connection sensor supplies a recognized component.
+    const groups = nodes.filter(n => componentIds.has(n.id)).map(n => ({
       parent_id: n.id,
       member_ids: [...new Set([
-        ...edges.filter(e => e.source === n.id).map(e => e.target),
-        ...(branchMembers.get(n.id) || [])
+        ...edges.filter(e => e.source === n.id && !sensorParent.has(e.target)).map(e => e.target),
+        ...[...(branchMembers.get(n.id) || [])].filter(id => !sensorParent.has(id)),
+        ...[...sensorParent].filter(([, parent]) => parent === n.id).map(([id]) => id)
       ])]
     }));
     const selectedTheme = ["light", "dark"].includes(this.config.theme) ? this.config.theme : "auto";
