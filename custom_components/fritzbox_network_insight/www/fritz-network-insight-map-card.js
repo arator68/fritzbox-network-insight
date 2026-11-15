@@ -103,7 +103,7 @@ class FritzNetworkInsightMapCard extends HTMLElement {
       '<h3>GRAFISCHE NETZWERKTOPOLOGIE – KNOTEN AUSWÄHLEN FÜR DETAILS</h3><div class="fnc-map-scroll"><div class="fnc-map-canvas" style="width:'+w+'px;height:'+h+'px"><svg viewBox="0 0 '+w+' '+h+'">'+links.map(line).join("")+'</svg>'+components.map(node).join("")+'</div></div><h3>Weitere / nicht zugeordnete Geräte: '+other.length+'</h3>';
     return '<div class="fnc-map-head">Netzwerk-Gesamtübersicht · Datenquelle: Network Insight</div>'+stats+content;
   }
-  render(){
+  render(searchOnly=false){
     if(!this.config)return;
     const esc=v=>this._esc(v),data=this._data,view=this._view();
     const {nodes,components,groups,other}=view;
@@ -124,6 +124,14 @@ class FritzNetworkInsightMapCard extends HTMLElement {
       return '<section class="fnc-group"><button class="fnc-group-head" data-group="'+esc(id)+'"><span><strong>'+esc(c.name||c.mac)+'</strong><small>'+devices.length+' direkt verbundene Geräte</small></span><b>'+(expanded?"−":"+")+'</b></button>'+(expanded?'<div class="fnc-group-items">'+(visible.map(item).join("")||'<span class="fnc-empty">Keine passenden Geräte</span>')+'</div>':"")+'</section>';
     }).join("");
     const otherVisible=other.filter(shown);
+    if(searchOnly){
+      const groupContainer=this.querySelector(".fnc-groups");
+      const otherContainer=this.querySelector(".fnc-other");
+      if(groupContainer)groupContainer.innerHTML=tiles;
+      if(otherContainer)otherContainer.innerHTML=otherVisible.map(item).join("");
+      this._bindResultClicks(nodes);
+      return;
+    }
     const allCount=nodes.length;
     const stats=[["Geräte gesamt",allCount],["Verbindungen",connectionCount],["Online",online],["Offline",offline]];
     this.innerHTML='<ha-card class="fnc-card"><div class="fnc-wrap"><h2>'+esc(this.config.title||"Network Center")+'</h2>'+
@@ -160,10 +168,13 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     force(".fnc-wrap h2,.fnc-wrap h3",{"color":heading});
     force(".fnc-map-toggle",{"background-color":palette.accent});
     const input=this.querySelector(".fnc-search");
-    if(input){input.addEventListener("input",e=>{const pos=e.target.selectionStart;this._search=e.target.value;this.render();const next=this.querySelector(".fnc-search");next?.focus();try{next?.setSelectionRange(pos,pos);}catch(_){}});}
+    if(input){input.addEventListener("input",e=>{this._search=e.target.value;this.render(true);});}
     const select=this.querySelector(".fnc-filter");
     if(select){select.value=this._filter;select.addEventListener("change",e=>{this._filter=e.target.value;this.render();});}
     this.querySelector(".fnc-map-toggle")?.addEventListener("click",()=>{this._showMap=!this._showMap;this.render();});
+    this._bindResultClicks(nodes);
+  }
+  _bindResultClicks(nodes){
     this.querySelectorAll("[data-group]").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.group;if(this._expanded.has(id))this._expanded.delete(id);else this._expanded.add(id);this.render();}));
     this.querySelectorAll("[data-component]").forEach(b=>b.addEventListener("click",()=>{this._selectedComponent=b.dataset.component;this.render();}));
     this.querySelectorAll("[data-map-back]").forEach(b=>b.addEventListener("click",()=>{this._selectedComponent=null;this.render();}));
