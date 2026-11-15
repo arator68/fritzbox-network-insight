@@ -11,10 +11,36 @@ from .device import normalize_mac
 from .device_details import DeviceDetails
 
 
-def _display_role(host: Mapping[str, Any]) -> str:
-    """Display the existing device classification, not the WLAN access method."""
+def _display_role(
+    mac: str, host: Mapping[str, Any], mesh_topology: Mapping[str, Any],
+) -> tuple[str, str]:
+    """Use explicit device classification or AVM Mesh role, never the hostname."""
     kind = str(host.get("device_type") or "").strip().lower()
-    return {"router": "Router", "switch": "Switch", "repeater": "Repeater", "access_point": "Access Point", "access point": "Access Point"}.get(kind, "Endgerät")
+    labels = {
+        "router": "Router", "switch": "Switch", "repeater": "Repeater",
+        "access_point": "Access Point", "access point": "Access Point",
+    }
+    if kind:
+        return labels.get(kind, "Endgerät"), "device_type"
+
+    # AVM Mesh identifies infrastructure nodes independently of the host
+    # interface type. Only a matching MAC and explicit Mesh role count.
+    aliases = mesh_topology.get("aliases") or {}
+    canonical = aliases.get(normalize_mac(mac), normalize_mac(mac))
+    for node in mesh_topology.get("nodes") or []:
+        if not isinstance(node, dict) or normalize_mac(node.get("mac")) != canonical:
+            continue
+        role = str(node.get("mesh_role") or "").strip().lower()
+        if role in {"repeater", "mesh_repeater", "mesh repeater"}:
+            return "Repeater", "avm_mesh_role"
+        break
+
+    # Successful TR-064 WLANConfiguration responses from the device itself
+    # establish an infrastructure WLAN access point, not an ordinary client.
+    raw = host.get("repeater_raw_data")
+    if isinstance(raw, dict) and raw.get("available") is True and raw.get("wlan_services"):
+        return "Repeater", "repeater_tr064"
+    return "Endgerät", "device_type"
 
 
 def connection_metadata(
@@ -28,8 +54,9 @@ def connection_metadata(
     }:
         return {}
 
+    role, role_source = _display_role(mac, host, mesh_topology)
     result: dict[str, dict[str, Any]] = {
-        "role": {"value": _display_role(host), "source": "device_type"}
+        "role": {"value": role, "source": role_source}
     }
 
     # Prefer an explicit band observation. Channel fallback is allowed only
