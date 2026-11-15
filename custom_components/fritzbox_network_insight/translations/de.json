@@ -96,6 +96,7 @@
       "wlan_connection_peer": {
         "name": "Direkt verbunden mit"
       },
+      "connection_role": {"name": "Geräterolle"},
       "connection_type": {
         "name": "Verbindungstyp"
       },
