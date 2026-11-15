@@ -20,17 +20,17 @@ class FritzNetworkInsightMapCard extends HTMLElement {
   _esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
   _id(n){return String(n.id||n.mac||"").toUpperCase();}
   _kind(n){
-    const type=String(n.device_type||"").toLowerCase(),role=String(n.mesh_role||"").toLowerCase();
-    if(type.includes("router")||role.includes("router")||role.includes("master"))return "router";
-    if(type.includes("switch"))return "switch";
-    if(type.includes("repeater")||role.includes("repeater")||role.includes("mesh")||type.includes("fritzbox")&&role.includes("slave"))return "repeater";
+    const type=String(n.device_type||"").toLowerCase(),role=String(n.mesh_role||"").toLowerCase(),name=String(n.name||"").toLowerCase();
+    if(type.includes("router")||role.includes("master"))return "router";
+    if(type.includes("switch")||/\b(?:sg\d{3,}|tl-sg\d+|switch)\b/i.test(name))return "switch";
+    if(type.includes("repeater")||role.includes("repeater")||role.includes("slave")||/repeater|fritz(?:box|\!box)?[ -]?\d{3,}/i.test(name))return "repeater";
     return "device";
   }
   _connection(n){
     const compact=String(n.mac||n.id||"").replace(/:/g,"").toLowerCase();
     const s=this._hass?.states?.["sensor.fritzbox_network_insight_"+compact+"_connection_peer"];
     if(!s||["unknown","unavailable","none",""].includes(String(s.state).toLowerCase()))return null;
-    return {name:String(s.state),mac:String(s.attributes?.connected_to_mac||"").toUpperCase()};
+    return {name:String(s.state),mac:String(s.attributes?.connected_to_mac||"").toUpperCase(),evidence:s.attributes?.evidence,direct:s.attributes?.direct_connection==="confirmed"};
   }
   _online(n){
     if(typeof n.online==="boolean")return n.online;
@@ -46,14 +46,15 @@ class FritzNetworkInsightMapCard extends HTMLElement {
   _view(){
     const nodes=(this._data?.nodes||[]).filter(n=>n.known_host===true).map(n=>{const id=String(n.mac||n.id||"").replace(/:/g,"").toLowerCase();const a=this._hass?.states?.["sensor.fritzbox_network_insight_"+id+"_status"]?.attributes||{};return {...n,device_type:a.device_type||n.device_type,mesh_role:a.mesh_role||n.mesh_role,name:a.dns_name||n.name,ip_address:a.ip_address||n.ip_address};});
     const byId=new Map(nodes.map(n=>[this._id(n),n]));
-    const byName=new Map(nodes.map(n=>[String(n.name||"").trim().toLowerCase(),n]));
+    const norm=v=>String(v||"").trim().toLowerCase().replace(/\.koch\.local$/,"").replace(/[^a-z0-9]/g,"");
+    const byName=new Map(nodes.flatMap(n=>[n.name,n.mac].map(x=>[norm(x),n])));
     const groups=new Map(),assigned=new Set();
     const components=nodes.filter(n=>this._kind(n)!=="device");
     for(const c of components)groups.set(this._id(c),[]);
     for(const n of nodes){
       if(this._kind(n)!=="device")continue;
-      const rel=this._connection(n)||(()=>{const key=String(n.mac||n.id||"").replace(/:/g,"").toLowerCase();const p=this._hass?.states?.["sensor.fritzbox_network_insight_"+key+"_wlan_connection_peer"];return p&&!["unknown","unavailable","none",""].includes(String(p.state).toLowerCase())?{name:String(p.state),mac:String(p.attributes?.connected_to_mac||"").toUpperCase()}:null;})();
-      let parent=rel&&(byId.get(rel.mac)||byName.get(rel.name.trim().toLowerCase()));
+      const rel=this._connection(n)||(()=>{const key=String(n.mac||n.id||"").replace(/:/g,"").toLowerCase();const p=this._hass?.states?.["sensor.fritzbox_network_insight_"+key+"_wlan_connection_peer"];return p&&!["unknown","unavailable","none",""].includes(String(p.state).toLowerCase())?{name:String(p.state),mac:String(p.attributes?.peer_mac||"").toUpperCase(),evidence:p.attributes?.source}:null;})();
+      let parent=rel&&(byId.get(rel.mac)||byName.get(norm(rel.name)));
       if(!parent){
         const edge=(this._data.edges||[]).find(e=>e.target===this._id(n)&&groups.has(String(e.source).toUpperCase())&&(e.kind==="mesh_wlan"&&e.evidence==="avm_mesh"||e.kind==="confirmed_lan"&&e.physical_link_confirmed===true));
         if(edge)parent=byId.get(String(edge.source).toUpperCase());
@@ -72,10 +73,12 @@ class FritzNetworkInsightMapCard extends HTMLElement {
       if(e.kind==="mesh_wlan"&&e.evidence==="avm_mesh"||e.kind==="confirmed_lan"&&e.physical_link_confirmed===true)add(e.source,e.target);
     }
     for(const n of components){
-      const r=this._connection(n);
+      const key=String(n.mac||"").replace(/:/g,"").toLowerCase();
+      const p=this._hass?.states?.["sensor.fritzbox_network_insight_"+key+"_wlan_connection_peer"];
+      const r=this._connection(n)||(p?.attributes?.peer_mac?{mac:String(p.attributes.peer_mac).toUpperCase(),name:String(p.state)}:null);
       if(!r)continue;
       const parent=components.find(c=>this._id(c)===r.mac||String(c.name||"").toLowerCase()===r.name.toLowerCase());
-      if(parent)add(this._id(parent),this._id(n));
+      if(parent&&r.evidence!=="fdb_reachable_via_port")add(this._id(parent),this._id(n));
     }
     const selected=byId.get(this._selectedComponent);
     const root=components.find(n=>this._kind(n)==="router")||components[0];
@@ -109,7 +112,7 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     const shown=n=>matches(n)&&filter(n);
     const online=nodes.filter(n=>this._online(n)===true).length;
     const offline=nodes.filter(n=>this._online(n)===false).length;
-    const connectionCount=nodes.filter(n=>this._kind(n)!=="router"&&this._connection(n)).length;
+    const connectionCount=nodes.filter(n=>this._kind(n)!=="router"&&(this._connection(n)||this._hass?.states?.["sensor.fritzbox_network_insight_"+String(n.mac||"").replace(/:/g,"").toLowerCase()+"_wlan_connection_peer"]?.state&&!["unknown","unavailable"].includes(String(this._hass.states["sensor.fritzbox_network_insight_"+String(n.mac||"").replace(/:/g,"").toLowerCase()+"_wlan_connection_peer"]?.state).toLowerCase()))).length;
     const item=n=>'<button class="fnc-device" data-device="'+esc(this._id(n))+'"><span class="fnc-dot '+(this._online(n)===true?"on":"")+'"></span><span class="fnc-device-text"><strong>'+esc(n.name||n.mac)+'</strong><small>'+esc(this._kind(n)==="device"?"Endgerät":this._kind(n))+' · '+esc(n.ip_address||"")+'</small></span></button>';
     const tiles=components.filter(c=>filter(c)||this._filter==="device").map(c=>{
       const devices=groups.get(this._id(c))||[];
