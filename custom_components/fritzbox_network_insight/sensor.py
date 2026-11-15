@@ -61,7 +61,7 @@ async def async_setup_entry(
         result: list[SensorEntity] = []
         host = (coordinator.data or {}).get(mac)
         fields = (
-            ("type",) if _is_wlan(host) else CONNECTION_FIELDS
+            ("role", "type") if _is_wlan(host) else CONNECTION_FIELDS
         )
         for field in fields:
             identity = (mac, field)
@@ -96,6 +96,13 @@ async def async_setup_entry(
                 break
 
     _prune_wlan_lan_sensors()
+    # Retire the old WLAN-specific role entity. The stable connection_role
+    # entity is now the only role sensor for both LAN and WLAN.
+    for registered in list(er.async_entries_for_config_entry(registry, entry.entry_id)):
+        if (registered.domain == "sensor" and registered.platform == DOMAIN
+                and registered.unique_id.startswith("host_")
+                and registered.unique_id.endswith("_wlan_connection_role")):
+            registry.async_remove(registered.entity_id)
     obsolete = ("mesh_channel", "mesh_peer_channel_width", "mesh_signal_rx_raw")
     for registered in list(er.async_entries_for_config_entry(registry, entry.entry_id)):
         if registered.domain == "sensor" and registered.platform == DOMAIN and any(
@@ -151,7 +158,7 @@ async def async_setup_entry(
             mac, host, details, coordinator.data or {}, coordinator.mesh_topology
         )
         result: list[SensorEntity] = []
-        for key in ("role", "band", "peer"):
+        for key in ("band", "peer"):
             identity = (mac, key)
             if key in observations and identity not in registered_wlan_metadata:
                 registered_wlan_metadata.add(identity)
@@ -332,21 +339,6 @@ class FritzBoxWlanConnectionSensor(
     @property
     def _observation(self) -> dict[str, Any] | None:
         host = (self.coordinator.data or {}).get(self._mac)
-        # Match configured repeater by its configured IP, as already done
-        # for the status sensor. Do not infer a role from the device name.
-        if host and self._field == "role":
-            ip = host.get("ip_address")
-            configs = self.coordinator.entry.options.get("repeaters", {})
-            if isinstance(configs, dict):
-                for configured_host, config in configs.items():
-                    if not isinstance(config, dict):
-                        continue
-                    if config.get("host") == ip or configured_host == ip:
-                        host = dict(host)
-                        host["repeater_raw_data"] = (
-                            self.coordinator.repeater_raw_store.summary(configured_host)
-                        )
-                        break
         return connection_metadata(
             self._mac,
             host,
