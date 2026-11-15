@@ -499,7 +499,7 @@ class FritzNetworkCenterCard extends HTMLElement {
   }
   _connectionPeerSignature() {
     return Object.entries(this._hass?.states || {})
-      .filter(([id]) => /^sensor\\.fritzbox_network_insight_[0-9a-f]{12}_(?:connection_peer|wlan_connection_peer)$/.test(id))
+      .filter(([id]) => /^sensor\.fritzbox_network_insight_[0-9a-f]{12}_(?:connection_peer|wlan_connection_peer)$/.test(id))
       .map(([id, value]) => [id, value.state, value.attributes?.connected_to_mac, value.attributes?.peer_mac]);
   }
   async _load() {
