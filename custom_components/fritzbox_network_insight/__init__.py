@@ -62,11 +62,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Serve only the new, standalone read-only Lovelace map.
     # No changes to sensors, topology or protocol discovery.
     if not hass.data.get("_fritzbox_network_insight_map_registered"):
-        card_path = Path(__file__).parent / "www" / "fritz-network-insight-map-card.js"
+        www_path = Path(__file__).parent / "www"
         await hass.http.async_register_static_paths([
             StaticPathConfig(
-                "/fritzbox_network_insight/fritz-network-insight-map-card.js",
-                str(card_path),
+                "/fritzbox_network_insight",
+                str(www_path),
                 cache_headers=False,
             )
         ])
