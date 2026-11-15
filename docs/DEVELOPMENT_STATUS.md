@@ -345,3 +345,11 @@ Server-3
 - **Merge:** [PR #48](https://github.com/arator68/fritzbox-network-insight/pull/48) aus `feature/network-map-card-0729` wurde erfolgreich nach `develop` gemergt; Merge-Commit `0bb0bfe0c3369cc752ed48375ed7f888b0086fa9`. Der PR umfasste auch die bereits entwickelten Geräte-/Verbindungsrollen und die Netzwerkkarten-Arbeiten. `main` blieb unverändert.
 - **Unveränderte Grundsätze:** AVM-Mesh als Ausgangsbasis, keine hartcodierten Verbindungen, SNMP/LLDP nur mit belastbarem Nachweis zur Topologie-Korrektur, FDB nicht als direkter Kabelnachweis; keine zusätzliche Änderung der Topologieberechnung durch die LLDP-Timeout-Korrektur.
 - **Nächster Einstieg:** Neue Arbeiten von `develop` aus beginnen. Der erfolgreiche LLDP-Praxistest ist dokumentiert; die konkrete Darstellung aller vier Verbindungen in der Netzwerkkarte wurde damit noch nicht separat bestätigt.
+
+## 24. 2026-11-15 – Netzwerk-Map als Dialog (PR #49, Test ausstehend)
+
+- Neuer Arbeitsbranch `feature/network-map-dialog` von `develop`; [PR #49](https://github.com/arator68/fritzbox-network-insight/pull/49) als Draft gegen `develop`.
+- Vorhandener Button „Netzwerk-Map öffnen“ öffnet die bereits vorhandene Network-Insight-Map in einem Dialog statt innerhalb der Dashboard-Kachel umzuschalten.
+- Dialogverhalten nach Referenz der alten Integration `FRITZBox_Network_Map_0.7.29(2).zip`: ca. 94 % Breite / 90 % Höhe, Kopfzeile, Schließen über X, Escape und Klick auf den Hintergrund.
+- Ausschließlich `www/fritz-network-insight-map-card.js` geändert. Keine Änderungen an Topologieermittlung, SNMP/LLDP, FDB oder Geräterollen.
+- **Offen:** GitHub-CI und HA-Frontend-Praxistest einschließlich Öffnen/Schließen und Kartennavigation. Erst danach Merge nach `develop`.
