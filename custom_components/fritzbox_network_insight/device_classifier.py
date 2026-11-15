@@ -9,7 +9,7 @@ from typing import Any
 
 DEVICE_TYPES = frozenset({
     "router", "switch", "access_point", "nas", "printer", "camera",
-    "computer", "phone", "tablet", "smart_home", "other",
+    "computer", "phone", "tablet", "smart_home", "other", "repeater",
 })
 
 
@@ -36,6 +36,14 @@ def classify_device(
         return {
             "device_type": declared,
             "device_type_source": source,
+            "device_type_confidence": "detected",
+        }
+
+    mesh_role = str(host.get("mesh_role") or "").strip().lower()
+    if mesh_role in {"master", "slave"}:
+        return {
+            "device_type": "router" if mesh_role == "master" else "repeater",
+            "device_type_source": "avm_mesh_role",
             "device_type_confidence": "detected",
         }
 
