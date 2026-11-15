@@ -318,3 +318,13 @@ Server-3
 - **GitHub-CI:** Für Commit `8f1af1c17e9a97f214daf733841e1eb777fc51be` waren `Validate #866` und `Internal topology tests #169` erfolgreich.
 - **Unverändert:** AVM-Mesh als Topologiegrundlage, keine hartcodierten Verbindungen, LLDP nur bei eindeutigem Nachweis, FDB nicht als direkter Kabelnachweis, WLAN-Geräte ohne LAN-Portgeschwindigkeit. Der bereits zurückgestellte Hinweis zur Größe einzelner Discovery-Attribute (16 KB) ist nicht Bestandteil dieser Änderung.
 - **Nächster Schritt:** Änderungen nach `develop` zusammenführen; `main` unverändert lassen. Für Folgearbeiten von `develop` ausgehen.
+
+## 15.11.2026 – LLDP-Abfragediagnose (HA-Test ausstehend)
+
+- Aktueller Feature-Branch `feature/network-map-card-0729`, inklusive der jüngsten Geräterollen-Korrekturen.
+- Bei SG3428 (MAC `D4:D6:DF:0E:1B:54`) meldete der Geräteerkennungssensor sowohl im aktuellen Stand als auch in `6b450a2` `lldp_neighbor_count: 0` und `lldp_neighbors: []`; FDB und Port-Telemetrie waren erfolgreich. Die Ursache ist noch nicht belegt.
+- `discovery/lldp.py` erfasst jetzt getrennte Diagnosewerte für lokalen Port-Walk und Remote-Nachbartabelle: Status, Anzahl, Dauer und Fehlerphase. Zeitüberschreitungen und SNMP-Fehler werden als Kategorien statt als bloß leere Liste sichtbar. Keine Zugangsdaten oder Fehlermeldungstexte im Sensor.
+- `discovery/snmp.py` veröffentlicht diese Werte als JSON-Attribut `lldp_diagnostics` im bestehenden Geräteerkennungssensor.
+- Die bestehende Rückgabe der LLDP-Nachbarliste und das 2,5-Sekunden-Gesamtlimit bleiben unverändert. Keine Änderung an Rollen, Topologie oder Netzwerkkarte.
+- **Offen:** GitHub-CI und HA-Praxistest; anschließend SG3428-Geräteerkennung manuell starten und `lldp_diagnostics` auswerten.
+
