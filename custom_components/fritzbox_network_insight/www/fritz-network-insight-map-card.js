@@ -15,8 +15,11 @@ class FritzNetworkInsightMapCard extends HTMLElement {
       const response=await this._hass.callWS({type:"call_service",domain:"fritzbox_network_insight",service:"topology_view",service_data:this.config.entry_id?{entry_id:this.config.entry_id}:{},return_response:true});
       const data=response?.response??response?.service_response??response;
       if(!Array.isArray(data?.nodes)||!Array.isArray(data?.edges))throw Error(data?.error||"Keine gültigen Topologiedaten erhalten");
-      this._data=data;this._error="";
-    }catch(e){this._error=String(e?.message||e);}finally{this._loading=false;if(this._active)this.render();}
+      const signature=JSON.stringify(data);
+      const changed=signature!==this._dataSignature||Boolean(this._error);
+      this._data=data;this._dataSignature=signature;this._error="";
+      if(changed&&this._active)this.render();
+    }catch(e){const error=String(e?.message||e);if(error!==this._error){this._error=error;if(this._active)this.render();}}finally{this._loading=false;}
   }
   _esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
   _id(n){return String(n.id||n.mac||"").toUpperCase();}
