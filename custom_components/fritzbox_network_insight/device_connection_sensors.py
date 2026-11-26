@@ -54,7 +54,7 @@ class FritzBoxDeviceConnectionSensor(
         # The router itself may lack an interface_type in the TR-064 host list.
         # Only a unique, explicitly confirmed LLDP link can establish LAN.
         direct = connection.get("connections") or []
-        link = direct[0] if len(direct) == 1 else None
+        link = connection.get("selected_connection")
         if (
             kind == "unknown"
             and link is not None
@@ -78,24 +78,7 @@ class FritzBoxDeviceConnectionSensor(
                     "connected_to_mac": connection.get("connected_to_mac"),
                     "evidence": connection.get("connection_evidence"),
                 }
-            if fdb is None or direct:
-                return None, {}
-            switch_mac = fdb["switch_mac"]
-            if self._field == "evidence":
-                return "fdb_reachable_via_port", {"direct_connection": "unconfirmed"}
-            nodes = self.coordinator.get_combined_topology_snapshot().get("nodes", [])
-            name = next(
-                (node.get("name") for node in nodes
-                 if isinstance(node, dict)
-                 and str(node.get("mac") or "").upper() == switch_mac
-                 and node.get("name")),
-                switch_mac,
-            )
-            return name, {
-                "connected_to_mac": switch_mac,
-                "evidence": "fdb_reachable_via_port",
-                "direct_connection": "unconfirmed",
-            }
+            return None, {}
 
         # The peer-side LLDP port is usable only if the peer is a switch.
         # LLDP does not itself report port speed.
@@ -146,7 +129,7 @@ class FritzBoxDeviceConnectionSensor(
 
         # The port is the observed switch ingress, not necessarily a direct
         # endpoint cable. Require exactly one matching FDB observation.
-        if fdb is None:
+        if link is not None or fdb is None:
             return None, {}
         switch_mac = fdb["switch_mac"]
         details = self.coordinator.device_details.get(self._mac)
