@@ -156,7 +156,7 @@ def connection_details(
         })
     if mesh_links:
         result["mesh_reported_connections"] = mesh_links
-    # Select the logical upstream connection without treating FDB as a cable.
+    # Select the logical upstream connection; FDB reachability is not proof of a direct cable.
     # A unique active AVM LAN peer is sufficient when LLDP is absent.
     active_mesh = [
         item for item in mesh_links
