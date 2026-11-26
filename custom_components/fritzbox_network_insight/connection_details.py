@@ -166,7 +166,7 @@ def connection_details(
         normalize_mac(node.get("mac"))
         for node in snapshot.get("nodes", [])
         if isinstance(node, Mapping)
-        and str(node.get("device_type") or "").lower() == "router"
+        and str(node.get("mesh_role") or "").lower() == "master"
     }
     selected = connections[0] if len(connections) == 1 else None
     if len(connections) > 1:
@@ -180,7 +180,7 @@ def connection_details(
             selected = upstream[0]
     elif not connections and kind == "lan":
         peers = {item["connected_to_mac"] for item in active_mesh}
-        if len(peers) == 1:
+        if len(active_mesh) == 1 and len(peers) == 1:
             selected = active_mesh[0]
     if selected is not None:
         result.update({
