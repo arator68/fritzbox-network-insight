@@ -59,6 +59,7 @@ class RouterLldpSensorTests(unittest.TestCase):
                 "peer_port": "gigabitEthernet 1/0/1", "evidence": evidence}
         snapshot = {"nodes": [{"mac": peer, "device_type": peer_type}],
                     "resolved": {"connection_type": kind, "connections": [link] * links,
+                                 "selected_connection": link if links == 1 else None,
                                  "connected_to": "SG3428", "connected_to_mac": peer,
                                  "connection_evidence": evidence}}
         switch_details = SimpleNamespace(values=lambda key: [SimpleNamespace(value=item) for item in (telemetry or [])] if key == "snmp_port_telemetry" else [])
@@ -98,6 +99,10 @@ class RouterLldpSensorTests(unittest.TestCase):
 
     def test_no_switch_port_for_non_switch_peer(self):
         self.assertIsNone(self.reading("switch_port", peer_type="router")[0])
+
+    def test_avm_router_peer_without_switch_telemetry(self):
+        self.assertEqual(self.reading("peer", kind="lan", evidence="avm_mesh", peer_type="router")[0], "SG3428")
+        self.assertIsNone(self.reading("port_speed", kind="lan", evidence="avm_mesh", peer_type="router")[0])
 
     def test_wlan_is_not_overridden(self):
         self.assertEqual(self.reading("type", kind="wlan")[0], "WLAN")
