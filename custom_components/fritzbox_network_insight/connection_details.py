@@ -156,4 +156,38 @@ def connection_details(
         })
     if mesh_links:
         result["mesh_reported_connections"] = mesh_links
+    # Select the logical upstream connection without treating FDB as a cable.
+    # A unique active AVM LAN peer is sufficient when LLDP is absent.
+    active_mesh = [
+        item for item in mesh_links
+        if item["link_state"] == "CONNECTED" and item["link_type"] == "LAN"
+    ]
+    router_macs = {
+        normalize_mac(node.get("mac"))
+        for node in snapshot.get("nodes", [])
+        if isinstance(node, Mapping)
+        and str(node.get("device_type") or "").lower() == "router"
+    }
+    selected = connections[0] if len(connections) == 1 else None
+    if len(connections) > 1:
+        upstream = [
+            item for item in connections
+            if item["connected_to_mac"] in router_macs
+            and any(mesh["connected_to_mac"] == item["connected_to_mac"]
+                    for mesh in active_mesh)
+        ]
+        if len(upstream) == 1:
+            selected = upstream[0]
+    elif not connections and kind == "lan":
+        peers = {item["connected_to_mac"] for item in active_mesh}
+        if len(peers) == 1:
+            selected = active_mesh[0]
+    if selected is not None:
+        result.update({
+            "connected_to": selected["connected_to"],
+            "connected_to_mac": selected["connected_to_mac"],
+            "connected_to_port": selected["connected_to_port"],
+            "connection_evidence": selected["evidence"],
+            "selected_connection": selected,
+        })
     return result
