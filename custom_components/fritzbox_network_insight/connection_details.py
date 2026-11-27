@@ -40,7 +40,7 @@ def connection_details(
     }
     direct: dict[tuple[str, str | None], dict[str, Any]] = {}
     for link in snapshot.get("direct_links", []):
-        if not isinstance(link, Mapping) or link.get("connection") != "direct_confirmed":
+        if kind == "wlan" or not isinstance(link, Mapping) or link.get("connection") != "direct_confirmed":
             continue
         source = normalize_mac(link.get("source_mac"))
         remote = normalize_mac(link.get("target_mac"))
@@ -66,33 +66,7 @@ def connection_details(
             "observed_at": link.get("observed_at"),
         }
 
-    # User confirmations are stored by the existing manual topology service.
-    # They are not LLDP evidence and must remain labeled separately.
-    for link in manual_links or []:
-        if not isinstance(link, Mapping) or link.get("confirmation") != "user_confirmed":
-            continue
-        source = normalize_mac(link.get("source_mac"))
-        remote = normalize_mac(link.get("target_mac"))
-        if source is None or remote is None or source == remote:
-            continue
-        if target == source:
-            peer = remote
-            port = link.get("bridge_port") or None
-        elif target == remote:
-            peer = source
-            port = None  # bridge_port belongs to the switch, not this endpoint
-        else:
-            continue
-        if any(item["connected_to_mac"] == peer for item in direct.values()):
-            continue  # LLDP already confirms this MAC pair
-        direct[(peer, str(port) if port else None)] = {
-            "connected_to": names.get(peer, peer),
-            "connected_to_mac": peer,
-            "connected_to_port": str(port) if port else None,
-            "peer_port": str(link.get("bridge_port")) if target == remote and link.get("bridge_port") else None,
-            "evidence": "user_confirmed",
-            "observed_at": None,
-        }
+    # Legacy manual links are deliberately ignored as topology evidence.
 
     connections = sorted(
         direct.values(),
@@ -102,14 +76,6 @@ def connection_details(
     result["connection_count"] = len(connections)
     if connections:
         result["connection_evidence"] = (connections[0]["evidence"] if len(connections) == 1 else "multiple_confirmed_sources")
-    if len(connections) == 1:
-        only = connections[0]
-        result.update({
-            "connected_to": only["connected_to"],
-            "connected_to_mac": only["connected_to_mac"],
-            "connected_to_port": only["connected_to_port"],
-        })
-
     # FDB only establishes reachability via a switch port, not direct wiring.
     reachable = []
     for link in snapshot.get("reachable_via_port", []):
@@ -135,6 +101,8 @@ def connection_details(
             continue
         source = normalize_mac(link.get("source_mac"))
         remote = normalize_mac(link.get("target_mac"))
+        if source is None or remote is None or source == remote:
+            continue
         if target == source and remote is not None:
             peer = remote
             local_port = link.get("source_interface")
@@ -168,8 +136,10 @@ def connection_details(
         if isinstance(node, Mapping)
         and str(node.get("mesh_role") or "").lower() == "master"
     }
-    selected = connections[0] if len(connections) == 1 else None
-    if len(connections) > 1:
+    selected = connections[0] if len(connections) == 1 and target not in router_macs else None
+    if target in router_macs:
+        selected = None
+    elif len(connections) > 1:
         upstream = [
             item for item in connections
             if item["connected_to_mac"] in router_macs
