@@ -150,6 +150,40 @@ def connection_details(
                 selected = matching[0]
         elif not candidates and len(connections) == 1:
             selected = connections[0]
+    # Refine AVM LAN attachment only when the switch is on the same
+    # AVM router port and the FDB ingress differs from its uplink.
+    if kind == "lan" and selected and selected["evidence"] == "avm_mesh":
+        candidates = []
+        for entry in reachable:
+            switch = entry["switch_mac"]
+            port = entry["interface_name"]
+            if not port or switch == target or switch == selected["connected_to_mac"]:
+                continue
+            uplinks = []
+            for edge in snapshot.get("mesh_links", []):
+                if edge.get("link_type") != "LAN" or edge.get("link_state") != "CONNECTED":
+                    continue
+                source = normalize_mac(edge.get("source_mac"))
+                remote = normalize_mac(edge.get("target_mac"))
+                if source == switch and remote == selected["connected_to_mac"]:
+                    uplinks.append((edge.get("source_interface"), edge.get("target_interface")))
+                elif remote == switch and source == selected["connected_to_mac"]:
+                    uplinks.append((edge.get("target_interface"), edge.get("source_interface")))
+            if len(uplinks) != 1:
+                continue
+            uplink, router_port = uplinks[0]
+            if not uplink or not router_port or router_port != selected.get("peer_port") or port == uplink:
+                continue
+            candidates.append((switch, port))
+        if len(set(candidates)) == 1:
+            switch, port = candidates[0]
+            selected = {
+                "connected_to": names.get(switch, switch),
+                "connected_to_mac": switch,
+                "connected_to_port": None,
+                "peer_port": port,
+                "evidence": "fdb_reachable_via_port",
+            }
     if selected is not None:
         result.update({
             "connected_to": selected["connected_to"],
