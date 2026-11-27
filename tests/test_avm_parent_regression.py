@@ -70,5 +70,14 @@ class AvmParentTests(unittest.TestCase):
                   confirmation="user_confirmed")])
         self.assertIsNone(result["connected_to_mac"])
 
+    def test_conflicting_single_lldp_does_not_replace_avm_master(self):
+        snapshot = dict(nodes=[dict(mac=ROUTER, mesh_role="master")],
+                        mesh_links=[mesh(ROUTER, CLIENT, "LAN:4")],
+                        direct_links=[lldp(SWITCH, CLIENT, "port8")])
+        result = mod.connection_details(CLIENT, {"interface_type": "Ethernet"}, snapshot)
+        self.assertEqual(result["connected_to_mac"], ROUTER)
+        self.assertEqual(result["selected_connection"]["peer_port"], "LAN:4")
+        self.assertEqual(result["connection_evidence"], "avm_mesh")
+
 if __name__ == "__main__":
     unittest.main()
