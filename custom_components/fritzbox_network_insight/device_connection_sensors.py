@@ -120,6 +120,24 @@ class FritzBoxDeviceConnectionSensor(
                             }
                     return None, attrs
 
+        if link and link.get("evidence") == "fdb_reachable_via_port":
+            switch_mac = link.get("connected_to_mac")
+            interface = link.get("peer_port")
+            details = self.coordinator.device_details.get(self._mac)
+            ports = [item.value for item in details.values("lan_switch_port")
+                     if isinstance(item.value, dict)
+                     and item.value.get("endpoint_access") == "ethernet"
+                     and item.value.get("switch_mac") == switch_mac
+                     and item.value.get("interface_name") == interface] if details else []
+            if len(ports) == 1:
+                port = ports[0]
+                attrs = {"switch_mac": switch_mac, "interface_name": interface,
+                         "evidence": "fdb_reachable_via_port", "direct_connection": "unconfirmed"}
+                if self._field == "switch_port":
+                    return interface, attrs
+                speed = port.get("switch_port_reported_speed_mbps")
+                if isinstance(speed, (int, float)) and not isinstance(speed, bool) and speed > 0:
+                    return int(speed), {**attrs, "speed_source": port.get("switch_port_speed_source")}
         # Reachability alone cannot establish an endpoint port or speed.
         return None, {}
 
