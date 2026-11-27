@@ -51,5 +51,24 @@ class AvmParentTests(unittest.TestCase):
         self.assertEqual(result["connection_count"], 2)
         self.assertEqual(result["connected_to_port"], "port1")
 
+    def test_wlan_ignores_lldp(self):
+        snapshot = dict(direct_links=[lldp(SWITCH, CLIENT, "port8")])
+        result = mod.connection_details(CLIENT, {"interface_type": "802.11"}, snapshot)
+        self.assertIsNone(result["connected_to_mac"])
+        self.assertIsNone(result["connected_to_port"])
+
+    def test_master_has_no_parent(self):
+        snapshot = dict(nodes=[dict(mac=ROUTER, mesh_role="master")],
+                        mesh_links=[mesh(ROUTER, SWITCH, "LAN:1")],
+                        direct_links=[lldp(SWITCH, ROUTER, "port1")])
+        result = mod.connection_details(ROUTER, {"interface_type": "Ethernet"}, snapshot)
+        self.assertIsNone(result["connected_to_mac"])
+
+    def test_legacy_manual_link_is_not_evidence(self):
+        result = mod.connection_details(CLIENT, {"interface_type": "Ethernet"}, {},
+            [dict(source_mac=SWITCH, target_mac=CLIENT, bridge_port="8",
+                  confirmation="user_confirmed")])
+        self.assertIsNone(result["connected_to_mac"])
+
 if __name__ == "__main__":
     unittest.main()
