@@ -39,7 +39,7 @@ class RouterLldpSensorTests(unittest.TestCase):
         package.__path__ = [str(ROOT)]
         module(f"{PKG}.const", DOMAIN="fritzbox_network_insight")
         module(f"{PKG}.coordinator", FritzBoxDataUpdateCoordinator=object)
-        module(f"{PKG}.connection_details", connection_details=lambda mac, host, snapshot, manual: snapshot["resolved"])
+        module(f"{PKG}.connection_details", connection_details=lambda mac, host, snapshot, manual=None: snapshot["resolved"])
         spec = importlib.util.spec_from_file_location(f"{PKG}.device_connection_sensors", ROOT / "device_connection_sensors.py")
         cls.loaded = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = cls.loaded
@@ -52,7 +52,7 @@ class RouterLldpSensorTests(unittest.TestCase):
                 sys.modules.pop(key, None)
         sys.modules.update(cls.previous)
 
-    def reading(self, field, kind="unknown", evidence="lldp_last_observed", peer_type="switch", links=1, telemetry=None):
+    def reading(self, field, kind="unknown", evidence="lldp_last_observed", peer_type="switch", links=1, telemetry=None, reachable=None):
         mac = "04:B4:FE:18:79:65"
         peer = "D4:D6:DF:0E:1B:54"
         link = {"connected_to_mac": peer, "connected_to": "SG3428",
@@ -61,7 +61,8 @@ class RouterLldpSensorTests(unittest.TestCase):
                     "resolved": {"connection_type": kind, "connections": [link] * links,
                                  "selected_connection": link if links == 1 else None,
                                  "connected_to": "SG3428", "connected_to_mac": peer,
-                                 "connection_evidence": evidence}}
+                                 "connection_evidence": evidence,
+                                 "reachable_via_switch_ports": reachable or []}}
         switch_details = SimpleNamespace(values=lambda key: [SimpleNamespace(value=item) for item in (telemetry or [])] if key == "snmp_port_telemetry" else [])
         coordinator = SimpleNamespace(data={mac: {"interface_type": None}},
                                       manual_links=[], device_details={peer: switch_details},
@@ -108,6 +109,11 @@ class RouterLldpSensorTests(unittest.TestCase):
         self.assertEqual(self.reading("type", kind="wlan")[0], "WLAN")
         self.assertIsNone(self.reading("switch_port", kind="wlan")[0])
 
+
+    def test_fdb_without_selected_parent_has_no_endpoint_telemetry(self):
+        reachable = [{"switch_mac": "D4:D6:DF:0E:1B:54", "interface_name": "port1"}]
+        for field in ("switch_port", "port_speed"):
+            self.assertIsNone(self.reading(field, kind="lan", links=0, reachable=reachable)[0])
 
 if __name__ == "__main__":
     unittest.main()
