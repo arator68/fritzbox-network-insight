@@ -136,22 +136,20 @@ def connection_details(
         if isinstance(node, Mapping)
         and str(node.get("mesh_role") or "").lower() == "master"
     }
-    selected = connections[0] if len(connections) == 1 and target not in router_macs else None
-    if target in router_macs:
-        selected = None
-    elif len(connections) > 1:
-        upstream = [
-            item for item in connections
-            if item["connected_to_mac"] in router_macs
-            and any(mesh["connected_to_mac"] == item["connected_to_mac"]
-                    for mesh in active_mesh)
-        ]
-        if len(upstream) == 1:
-            selected = upstream[0]
-    elif not connections and kind == "lan":
-        peers = {item["connected_to_mac"] for item in active_mesh}
-        if len(active_mesh) == 1 and len(peers) == 1:
-            selected = active_mesh[0]
+    selected = None
+    if target not in router_macs and kind != "wlan":
+        # Prefer the AVM upstream, using LLDP to refine its port evidence.
+        upstream = [item for item in active_mesh
+                    if item["connected_to_mac"] in router_macs]
+        candidates = upstream or active_mesh
+        if len(candidates) == 1:
+            selected = candidates[0]
+            matching = [item for item in connections
+                        if item["connected_to_mac"] == selected["connected_to_mac"]]
+            if len(matching) == 1:
+                selected = matching[0]
+        elif not candidates and len(connections) == 1:
+            selected = connections[0]
     if selected is not None:
         result.update({
             "connected_to": selected["connected_to"],
