@@ -79,5 +79,22 @@ class AvmParentTests(unittest.TestCase):
         self.assertEqual(result["selected_connection"]["peer_port"], "LAN:4")
         self.assertEqual(result["connection_evidence"], "avm_mesh")
 
+    def test_fdb_refines_matching_avm_router_port(self):
+        uplink = mesh(ROUTER, SWITCH, "LAN:1")
+        uplink["target_interface"] = "port1"
+        snapshot = dict(nodes=[dict(mac=ROUTER, mesh_role="master"), dict(mac=SWITCH, device_type="switch")],
+                        mesh_links=[uplink, mesh(ROUTER, CLIENT, "LAN:1")],
+                        reachable_via_port=[dict(source_mac=SWITCH, target_mac=CLIENT,
+                            interface_name="port4", connection="reachable_via_port")])
+        host = {"interface_type": "Ethernet"}
+        result = mod.connection_details(CLIENT, host, snapshot)
+        self.assertEqual(result["connected_to_mac"], SWITCH)
+        self.assertEqual(result["selected_connection"]["peer_port"], "port4")
+        snapshot["reachable_via_port"][0]["interface_name"] = "port1"
+        self.assertEqual(mod.connection_details(CLIENT, host, snapshot)["connected_to_mac"], ROUTER)
+        snapshot["reachable_via_port"][0]["interface_name"] = "port4"
+        snapshot["mesh_links"][1]["source_interface"] = "LAN:4"
+        self.assertEqual(mod.connection_details(CLIENT, host, snapshot)["connected_to_mac"], ROUTER)
+
 if __name__ == "__main__":
     unittest.main()
