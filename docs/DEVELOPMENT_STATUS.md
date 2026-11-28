@@ -1,3 +1,25 @@
+# Aktueller Entwicklungsstand – 28.11.2026
+
+**Branch:** `develop` · **Letzter Merge:** [PR #50](https://github.com/arator68/fritzbox-network-insight/pull/50), Merge-Commit `f117692972586846ef61f4b47c46ce60da3a6c6a`. `main` bleibt unverändert. Die folgenden älteren Statusabschnitte sind Historie.
+
+## Abgeschlossener Entwicklungsabschnitt
+
+- AVM-LAN-Peer-Auswahl und zentrale Topologieauflösung überarbeitet; nicht zugehörige FDB-Telemetrie darf keine falsche Elternverbindung begründen. AVM-Mesh bleibt Grundlage; SNMP/LLDP korrigieren nur bei belastbarem Nachweis. Keine hartcodierten Verbindungen; MAC als primäre Identität. Nicht auslesbare nachgelagerte Switches werden nicht als zusätzliche Topologieknoten geraten.
+- Netzwerkkarte bleibt reine Darstellung der Integrationsdaten. Dialog und deutsche/englische Frontend-Übersetzungen wiederhergestellt; Frontend-Asset-Tests ergänzt.
+- Dynamisches Komponentenraster: Mindestbreite bleibt beim Auf-/Zuklappen stabil (Commit `167c1f59`). Nutzer bestätigte Desktop mit fünf Spalten sowie simuliertes Tablet 1280 × 800 bei eingeklappter Seitenleiste.
+- WLAN-Signalbalken in Gerätekacheln (Commit `855328d`), aus vorhandenen WLAN-Messwerten; keine Anzeige erfundener Messwerte oder LAN-Portgeschwindigkeiten für WLAN-Geräte. Darstellung auf Desktop und simuliertem Tablet geprüft; lange Namen können abgeschnitten werden.
+- GitHub-CI: Workflow **Validate** für abschließenden PR-Head `855328d0490dd3f11aa85132c2019c501e4e1bc6` erfolgreich. Merge nach develop am 28.11.2026 bestätigt.
+
+## Nächster Entwicklungsabschnitt: TP-Link Easy Smart Discovery
+
+- Separater Linux-Praxistest am TL-SG1024DE Hardware 7.0 erfolgreich, ohne Anmeldung, SNMP oder LLDP. Discovery per UDP-Broadcast an Port 29808, Antwort auf Port 29809. Modell, MAC, IP, Hardware und Firmware wurden tatsächlich geliefert.
+- Das externe Testprogramm scheiterte zunächst an unbekannten TLV-Feldern 14–16; nach temporärer Erweiterung des Decoders war die Antwort vollständig lesbar. Bedeutung dieser Felder bleibt offen; für die Identifikation nicht erforderlich.
+- Geplant: eigenständiges Discovery-Modul, zentrale Broadcast-Abfrage ohne fest hinterlegte Zielgeräte, Zuordnung vorhandener Geräte ausschließlich über MAC, Ergänzung der Geräteklassifizierung mit Quellenkennzeichnung. Unbekannte TLV-Felder sicher überspringen; keine Konfigurationsänderung am Switch, keine Änderung der Topologie oder Berechnungen in der Karte.
+- Noch nicht implementiert: Integration in Home Assistant, Schnittstellenauswahl, Timeout-/Fehlerbehandlung, Intervall (15 Minuten vorgeschlagen), Tests für gültige/ungültige Antworten und unbekannte Felder sowie HA-OS-Praxistest. Weitere Modelle noch nicht praktisch bestätigt.
+- Neue Arbeiten von `develop` in einem separaten Feature-Branch beginnen.
+
+---
+
 # Aktueller Entwicklungsstand – 15.11.2026
 
 **Arbeitsbranch:** `feature/network-map-card-0729` · **PR:** [#48](https://github.com/arator68/fritzbox-network-insight/pull/48) gegen `develop`, derzeit **Draft und noch nicht gemergt**. `main` bleibt unverändert. Diese Momentaufnahme ersetzt die ältere Statusüberschrift vom 11.11.2026; die folgenden Abschnitte bleiben als Historie erhalten.
