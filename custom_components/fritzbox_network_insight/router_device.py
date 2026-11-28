@@ -29,6 +29,18 @@ def router_display_name(coordinator, entry: ConfigEntry, mac: str) -> str | None
     return model if model.casefold().startswith("fritz!box") else f"FRITZ!Box {model}"
 
 
+def router_identity(coordinator, entry, mac):
+    """Metadata from the configured router's actual TR-064 responses."""
+    model = router_display_name(coordinator, entry, mac)
+    if not model:
+        return {}
+    result = {"manufacturer": "AVM", "model": model}
+    firmware = getattr(coordinator.client, "router_metrics", {}).get("fritz_os")
+    if firmware:
+        result["sw_version"] = firmware
+    return result
+
+
 def router_device_info(coordinator, entry: ConfigEntry) -> DeviceInfo:
     """Reuse a physical router only when its configured address matches uniquely.
 
@@ -40,6 +52,7 @@ def router_device_info(coordinator, entry: ConfigEntry) -> DeviceInfo:
         return DeviceInfo(
             identifiers={(DOMAIN, mac)},
             connections={("mac", mac)},
+            **router_identity(coordinator, entry, mac),
         )
     return DeviceInfo(
         identifiers={(DOMAIN, entry.entry_id)},
@@ -66,8 +79,12 @@ def migrate_router_device(hass, coordinator, entry: ConfigEntry) -> int:
         physical = devices.async_get_device(connections={("mac", mac)})
     if physical is not None:
         display_name = router_display_name(coordinator, entry, mac)
+        changes = {key: value for key, value in router_identity(coordinator, entry, mac).items()
+                   if getattr(physical, key, None) != value}
         if display_name and physical.name != display_name and getattr(physical, "name_by_user", None) is None:
-            devices.async_update_device(physical.id, name=display_name)
+            changes["name"] = display_name
+        if changes:
+            devices.async_update_device(physical.id, **changes)
     if old is None or physical is None or old.id == physical.id:
         return 0
     moved = 0
