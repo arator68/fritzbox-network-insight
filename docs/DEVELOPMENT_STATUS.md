@@ -18,6 +18,15 @@
 - Noch nicht implementiert: Integration in Home Assistant, Schnittstellenauswahl, Timeout-/Fehlerbehandlung, Intervall (15 Minuten vorgeschlagen), Tests für gültige/ungültige Antworten und unbekannte Felder sowie HA-OS-Praxistest. Weitere Modelle noch nicht praktisch bestätigt.
 - Neue Arbeiten von `develop` in einem separaten Feature-Branch beginnen.
 
+## Bereinigung älterer Pull Requests – 28.11.2026
+
+- PR #45 (Router-Modellname) und #30 (DE/EN-Übersetzungen) nach Quellcodevergleich ohne Merge geschlossen; die hinzugefügten Funktionen sind bereits in develop enthalten.
+- PR #49 (Kartendialog) bleibt für die spätere Kartenentwicklung offen; Dialog und Frontend-Übersetzungsdateien sind identisch, Kartenanbindung noch zu prüfen.
+- PR #47 (LLDP/FDB-Refresh) bleibt offen; funktionale Abdeckung der damaligen Korrekturen und Regressionstests noch zu prüfen.
+- PR #44 (manuelle Topologieverwaltung entfernen) bleibt zurückgestellt; manuelle Speicherung und Verwaltungsfunktionen sind noch vorhanden. Keine Änderung am derzeit funktionierenden Topologiestand.
+- PR #37 (wlan_summary) bleibt offen; zusätzliche Zusammenfassung bei späterer Kartenentwicklung gegenüber wlan_details bewerten.
+- Keine alten Branches pauschal mergen. Priorität: TP-Link Easy Smart Discovery auf Basis des aktuellen develop; danach weitere Geräteklassifizierung und Kartenentwicklung.
+
 ---
 
 # Aktueller Entwicklungsstand – 15.11.2026
