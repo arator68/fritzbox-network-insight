@@ -254,9 +254,11 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
 
     async def async_record_manual_discovery(
         self, mac: str | None, *, status: str, requested: int, checked: int,
-        protocols: tuple[str, ...] = (), details: dict[str, str] | None = None
+        protocols: tuple[str, ...] = (), details: dict[str, str] | None = None,
+        publish: bool = True, scan_hosts: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         """Publish a manual result and update verified MAC-based identification."""
+        observation_hosts = scan_hosts if scan_hosts is not None else (self.data or {})
         result_details = dict(details or {})
         # Match only exact LLDP chassis MACs against known FRITZ!Box hosts.
         # This is an observation annotation, not an inferred network edge.
@@ -266,7 +268,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                 if isinstance(raw_neighbors, list) and all(
                     isinstance(item, dict) for item in raw_neighbors
                 ):
-                    matched = match_lldp_neighbors(raw_neighbors, self.data or {})
+                    matched = match_lldp_neighbors(raw_neighbors, observation_hosts)
                     result_details["lldp_neighbors"] = json.dumps(
                         matched, ensure_ascii=False
                     )
@@ -302,7 +304,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             try:
                 entries = json.loads(result_details["fdb_entries"])
                 if isinstance(entries, list) and all(isinstance(item, dict) for item in entries):
-                    observations = build_fdb_observations(mac, entries, self.data or {})
+                    observations = build_fdb_observations(mac, entries, observation_hosts)
                     self.fdb_observations[mac] = observations
                     fdb_changed = True
             except (ValueError, TypeError):
@@ -324,7 +326,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                 })
                 # Update the live host record so status sensors change immediately.
                 self._update_identified_device_registry(mac, identified)
-                if self.data and mac in self.data:
+                if publish and self.data and mac in self.data:
                     host = self.data[mac]
                     host.update(identified)
                     host.update(classify_device(host))
@@ -356,7 +358,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         # A manual SNMP scan must publish the switch's own IF-MIB telemetry
         # immediately. Otherwise LLDP connection sensors see stale device details
         # until the next periodic host scan.
-        if self.device_details and mac is not None:
+        if publish and self.device_details and mac is not None:
             details = self.device_details.get(mac)
             if (
                 details is not None
@@ -381,7 +383,8 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             add_lan_port_details(
                 self.device_details, self.discovery_results, self.fdb_observations
             )
-        self.async_update_listeners()
+        if publish:
+            self.async_update_listeners()
         if fdb_changed:
             async with self._topology_save_lock:
                 try:
@@ -461,7 +464,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                         continue
                     await self.async_record_manual_discovery(
                         mac, status="responded", requested=1, checked=1,
-                        protocols=("snmp",), details=details,
+                        protocols=("snmp",), details=details, publish=False, scan_hosts=hosts,
                     )
                 except Exception:
                     _LOGGER.warning("Automatic SNMP topology refresh failed for %s", mac)
