@@ -40,3 +40,17 @@ async def async_discover(hass):
         for identity in identities:
             found[identity.mac] = identity
     return list(found.values())
+
+
+def enrich_host(host, identity, existing_identification=None):
+    """Add identity metadata only when no stronger identification exists."""
+    if (identity is None or existing_identification is not None
+            or host.get("detected_device_type") or host.get("mesh_role")
+            or str(host.get("mac", "")).upper() != identity.mac.upper()):
+        return
+    host.update({
+        "detected_device_type": "switch",
+        "detected_device_type_source": "tplink_easy_smart_discovery",
+        "device_manufacturer": "TP-Link",
+        "device_model": identity.model,
+    })
