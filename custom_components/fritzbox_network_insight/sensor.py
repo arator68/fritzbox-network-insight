@@ -61,7 +61,8 @@ async def async_setup_entry(
         result: list[SensorEntity] = []
         host = (coordinator.data or {}).get(mac)
         fields = (
-            ("role", "type") if _is_wlan(host) else CONNECTION_FIELDS
+            ("role",) if mac == router_mac(coordinator, entry)
+            else ("role", "type") if _is_wlan(host) else CONNECTION_FIELDS
         )
         for field in fields:
             identity = (mac, field)
@@ -96,6 +97,14 @@ async def async_setup_entry(
                 break
 
     _prune_wlan_lan_sensors()
+    if router is not None:
+        compact = router.replace(":", "").lower()
+        obsolete_router_ids = {f"host_{compact}_connection_{field}"
+                               for field in CONNECTION_FIELDS if field != "role"}
+        for registered in list(er.async_entries_for_config_entry(registry, entry.entry_id)):
+            if (registered.domain == "sensor" and registered.platform == DOMAIN
+                    and registered.unique_id in obsolete_router_ids):
+                registry.async_remove(registered.entity_id)
     # Retire the old WLAN-specific role entity. The stable connection_role
     # entity is now the only role sensor for both LAN and WLAN.
     for registered in list(er.async_entries_for_config_entry(registry, entry.entry_id)):
