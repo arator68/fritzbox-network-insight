@@ -45,16 +45,12 @@ class FritzBoxDeviceConnectionSensor(
         if self._field == "role":
             kind = str(host.get("device_type") or "").strip().lower()
             return {"router": "Router", "switch": "Switch", "repeater": "Repeater", "access_point": "Access Point", "access point": "Access Point"}.get(kind, "Endgerät"), {"device_type_source": host.get("device_type_source")}
-        connection = connection_details(
-            self._mac, host,
-            self.coordinator.get_combined_topology_snapshot(),
-            self.coordinator.manual_links,
-        )
+        snapshot = self.coordinator.get_combined_topology_snapshot()
+        connection = connection_details(self._mac, host, snapshot)
         kind = connection.get("connection_type")
         # The router itself may lack an interface_type in the TR-064 host list.
         # Only a unique, explicitly confirmed LLDP link can establish LAN.
-        direct = connection.get("connections") or []
-        link = direct[0] if len(direct) == 1 else None
+        link = connection.get("selected_connection")
         if (
             kind == "unknown"
             and link is not None
@@ -68,8 +64,6 @@ class FritzBoxDeviceConnectionSensor(
 
         # LLDP confirms direct links; FDB identifies reachability only.
         # Never label FDB as proof of a physical cable.
-        reachable = connection.get("reachable_via_switch_ports") or []
-        fdb = reachable[0] if len(reachable) == 1 else None
         if self._field in ("peer", "evidence"):
             if link is not None:
                 if self._field == "evidence":
@@ -78,29 +72,11 @@ class FritzBoxDeviceConnectionSensor(
                     "connected_to_mac": connection.get("connected_to_mac"),
                     "evidence": connection.get("connection_evidence"),
                 }
-            if fdb is None or direct:
-                return None, {}
-            switch_mac = fdb["switch_mac"]
-            if self._field == "evidence":
-                return "fdb_reachable_via_port", {"direct_connection": "unconfirmed"}
-            nodes = self.coordinator.get_combined_topology_snapshot().get("nodes", [])
-            name = next(
-                (node.get("name") for node in nodes
-                 if isinstance(node, dict)
-                 and str(node.get("mac") or "").upper() == switch_mac
-                 and node.get("name")),
-                switch_mac,
-            )
-            return name, {
-                "connected_to_mac": switch_mac,
-                "evidence": "fdb_reachable_via_port",
-                "direct_connection": "unconfirmed",
-            }
+            return None, {}
 
         # The peer-side LLDP port is usable only if the peer is a switch.
         # LLDP does not itself report port speed.
         if link is not None and link.get("evidence") == "lldp_last_observed":
-            snapshot = self.coordinator.get_combined_topology_snapshot()
             peer_mac = link.get("connected_to_mac")
             peer_is_switch = any(
                 isinstance(node, dict)
@@ -144,40 +120,26 @@ class FritzBoxDeviceConnectionSensor(
                             }
                     return None, attrs
 
-        # The port is the observed switch ingress, not necessarily a direct
-        # endpoint cable. Require exactly one matching FDB observation.
-        if fdb is None:
-            return None, {}
-        switch_mac = fdb["switch_mac"]
-        details = self.coordinator.device_details.get(self._mac)
-        if details is None:
-            return None, {}
-        ports = [
-            item.value for item in details.values("lan_switch_port")
-            if isinstance(item.value, dict)
-            and item.value.get("endpoint_access") == "ethernet"
-            and item.value.get("switch_mac") == switch_mac
-            and item.value.get("interface_name") == fdb.get("interface_name")
-        ]
-        if len(ports) != 1:
-            return None, {}
-        port = ports[0]
-        interface_name = port.get("interface_name")
-        match = re.search(r"(?:/|\\b)(\\d+)$", str(interface_name or ""))
-        friendly_port = match.group(1) if match else interface_name
-        attrs = {
-            "switch_mac": switch_mac,
-            "interface_name": interface_name,
-            "bridge_port": port.get("bridge_port"),
-            "evidence": "fdb_reachable_via_port",
-            "direct_connection": "unconfirmed",
-        }
-        if self._field == "switch_port":
-            return friendly_port or port.get("bridge_port"), attrs
-        speed = port.get("switch_port_reported_speed_mbps")
-        if isinstance(speed, (int, float)) and not isinstance(speed, bool):
-            return int(speed), {**attrs, "speed_source": port.get("switch_port_speed_source")}
-        return None, attrs
+        if link and link.get("evidence") == "fdb_reachable_via_port":
+            switch_mac = link.get("connected_to_mac")
+            interface = link.get("peer_port")
+            details = self.coordinator.device_details.get(self._mac)
+            ports = [item.value for item in details.values("lan_switch_port")
+                     if isinstance(item.value, dict)
+                     and item.value.get("endpoint_access") == "ethernet"
+                     and item.value.get("switch_mac") == switch_mac
+                     and item.value.get("interface_name") == interface] if details else []
+            if len(ports) == 1:
+                port = ports[0]
+                attrs = {"switch_mac": switch_mac, "interface_name": interface,
+                         "evidence": "fdb_reachable_via_port", "direct_connection": "unconfirmed"}
+                if self._field == "switch_port":
+                    return interface, attrs
+                speed = port.get("switch_port_reported_speed_mbps")
+                if isinstance(speed, (int, float)) and not isinstance(speed, bool) and speed > 0:
+                    return int(speed), {**attrs, "speed_source": port.get("switch_port_speed_source")}
+        # Reachability alone cannot establish an endpoint port or speed.
+        return None, {}
 
     @property
     def native_value(self) -> str | int | None:

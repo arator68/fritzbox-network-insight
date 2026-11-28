@@ -40,7 +40,7 @@ def connection_details(
     }
     direct: dict[tuple[str, str | None], dict[str, Any]] = {}
     for link in snapshot.get("direct_links", []):
-        if not isinstance(link, Mapping) or link.get("connection") != "direct_confirmed":
+        if kind == "wlan" or not isinstance(link, Mapping) or link.get("connection") != "direct_confirmed":
             continue
         source = normalize_mac(link.get("source_mac"))
         remote = normalize_mac(link.get("target_mac"))
@@ -66,33 +66,7 @@ def connection_details(
             "observed_at": link.get("observed_at"),
         }
 
-    # User confirmations are stored by the existing manual topology service.
-    # They are not LLDP evidence and must remain labeled separately.
-    for link in manual_links or []:
-        if not isinstance(link, Mapping) or link.get("confirmation") != "user_confirmed":
-            continue
-        source = normalize_mac(link.get("source_mac"))
-        remote = normalize_mac(link.get("target_mac"))
-        if source is None or remote is None or source == remote:
-            continue
-        if target == source:
-            peer = remote
-            port = link.get("bridge_port") or None
-        elif target == remote:
-            peer = source
-            port = None  # bridge_port belongs to the switch, not this endpoint
-        else:
-            continue
-        if any(item["connected_to_mac"] == peer for item in direct.values()):
-            continue  # LLDP already confirms this MAC pair
-        direct[(peer, str(port) if port else None)] = {
-            "connected_to": names.get(peer, peer),
-            "connected_to_mac": peer,
-            "connected_to_port": str(port) if port else None,
-            "peer_port": str(link.get("bridge_port")) if target == remote and link.get("bridge_port") else None,
-            "evidence": "user_confirmed",
-            "observed_at": None,
-        }
+    # Legacy manual links are deliberately ignored as topology evidence.
 
     connections = sorted(
         direct.values(),
@@ -102,14 +76,6 @@ def connection_details(
     result["connection_count"] = len(connections)
     if connections:
         result["connection_evidence"] = (connections[0]["evidence"] if len(connections) == 1 else "multiple_confirmed_sources")
-    if len(connections) == 1:
-        only = connections[0]
-        result.update({
-            "connected_to": only["connected_to"],
-            "connected_to_mac": only["connected_to_mac"],
-            "connected_to_port": only["connected_to_port"],
-        })
-
     # FDB only establishes reachability via a switch port, not direct wiring.
     reachable = []
     for link in snapshot.get("reachable_via_port", []):
@@ -135,6 +101,8 @@ def connection_details(
             continue
         source = normalize_mac(link.get("source_mac"))
         remote = normalize_mac(link.get("target_mac"))
+        if source is None or remote is None or source == remote:
+            continue
         if target == source and remote is not None:
             peer = remote
             local_port = link.get("source_interface")
@@ -156,4 +124,72 @@ def connection_details(
         })
     if mesh_links:
         result["mesh_reported_connections"] = mesh_links
+    # Select the logical upstream connection; FDB reachability is not proof of a direct cable.
+    # A unique active AVM LAN peer is sufficient when LLDP is absent.
+    active_mesh = [
+        item for item in mesh_links
+        if item["link_state"] == "CONNECTED" and item["link_type"] == "LAN"
+    ]
+    router_macs = {
+        normalize_mac(node.get("mac"))
+        for node in snapshot.get("nodes", [])
+        if isinstance(node, Mapping)
+        and str(node.get("mesh_role") or "").lower() == "master"
+    }
+    selected = None
+    if target not in router_macs and kind != "wlan":
+        # Prefer the AVM upstream, using LLDP to refine its port evidence.
+        upstream = [item for item in active_mesh
+                    if item["connected_to_mac"] in router_macs]
+        candidates = upstream or active_mesh
+        if len(candidates) == 1:
+            selected = candidates[0]
+            matching = [item for item in connections
+                        if item["connected_to_mac"] == selected["connected_to_mac"]]
+            if len(matching) == 1:
+                selected = matching[0]
+        elif not candidates and len(connections) == 1:
+            selected = connections[0]
+    # Refine AVM LAN attachment only when the switch is on the same
+    # AVM router port and the FDB ingress differs from its uplink.
+    if kind == "lan" and selected and selected["evidence"] == "avm_mesh":
+        candidates = []
+        for entry in reachable:
+            switch = entry["switch_mac"]
+            port = entry["interface_name"]
+            if not port or switch == target or switch == selected["connected_to_mac"]:
+                continue
+            uplinks = []
+            for edge in snapshot.get("mesh_links", []):
+                if edge.get("link_type") != "LAN" or edge.get("link_state") != "CONNECTED":
+                    continue
+                source = normalize_mac(edge.get("source_mac"))
+                remote = normalize_mac(edge.get("target_mac"))
+                if source == switch and remote == selected["connected_to_mac"]:
+                    uplinks.append((edge.get("source_interface"), edge.get("target_interface")))
+                elif remote == switch and source == selected["connected_to_mac"]:
+                    uplinks.append((edge.get("target_interface"), edge.get("source_interface")))
+            if len(uplinks) != 1:
+                continue
+            uplink, router_port = uplinks[0]
+            if not uplink or not router_port or router_port != selected.get("peer_port") or port == uplink:
+                continue
+            candidates.append((switch, port))
+        if len(set(candidates)) == 1:
+            switch, port = candidates[0]
+            selected = {
+                "connected_to": names.get(switch, switch),
+                "connected_to_mac": switch,
+                "connected_to_port": None,
+                "peer_port": port,
+                "evidence": "fdb_reachable_via_port",
+            }
+    if selected is not None:
+        result.update({
+            "connected_to": selected["connected_to"],
+            "connected_to_mac": selected["connected_to_mac"],
+            "connected_to_port": selected["connected_to_port"],
+            "connection_evidence": selected["evidence"],
+            "selected_connection": selected,
+        })
     return result

@@ -3,8 +3,8 @@ class FritzNetworkInsightMapCard extends HTMLElement {
   static getConfigElement(){return document.createElement("fritz-network-insight-map-card-editor");}
   static getStubConfig(){return {design:"modern-dark",height:620,refresh_seconds:60};}
   setConfig(config){this.config={title:"Network Center",theme:"auto",design:"modern-dark",heading_color:"",background_color:"",height:620,refresh_seconds:60,...config};if(!this._stateInitialized){this._data=null;this._error="";this._search="";this._filter="all";this._expanded=new Set();this._showMap=false;this._selectedComponent=null;this._stateInitialized=true;}}
-  connectedCallback(){this._active=true;this._load();this._timer=setInterval(()=>this._load(),Math.max(15,Number(this.config?.refresh_seconds)||60)*1000);}
-  disconnectedCallback(){this._active=false;clearInterval(this._timer);}
+  connectedCallback(){this._active=true;this._fontListener=()=>this._measureGroupWidths();document.fonts?.addEventListener("loadingdone",this._fontListener);this._load();this._timer=setInterval(()=>this._load(),Math.max(15,Number(this.config?.refresh_seconds)||60)*1000);}
+  disconnectedCallback(){this._active=false;clearInterval(this._timer);document.fonts?.removeEventListener("loadingdone",this._fontListener);}
   set hass(hass){this._hass=hass;if(this._active&&!this._data&&!this._loading)this._load();}
   getCardSize(){return 8;}
   getGridOptions(){return {columns:"full",rows:"auto"};}
@@ -36,6 +36,33 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     const s=this._hass?.states?.["sensor.fritzbox_network_insight_"+compact+"_connection_peer"];
     if(!s||["unknown","unavailable","none",""].includes(String(s.state).toLowerCase()))return null;
     return {name:String(s.state),mac:String(s.attributes?.connected_to_mac||"").toUpperCase(),evidence:s.attributes?.evidence,direct:s.attributes?.direct_connection==="confirmed"};
+  }
+  _signalIcon(n){
+    const key=String(n.mac||n.id||"").replace(/:/g,"").toLowerCase();
+    const entity=this._hass?.states?.["sensor.fritzbox_network_insight_"+key+"_status"];
+    if(entity?.state!=="online"||this._online(n)===false)return "";
+    const details=entity.attributes?.wlan_details;
+    if(!Array.isArray(details))return "";
+    const readValue=field=>{
+      const entry=details.find(item=>item.field===field);
+      if(!entry||entry.value===null||entry.value===undefined||entry.value==="")return null;
+      const value=Number(entry.value);
+      return Number.isFinite(value)?value:null;
+    };
+    let percent=readValue("wifi_signal_strength");
+    if(percent===null||percent<0||percent>100){
+      percent=null;
+      for(const field of ["wifi_mesh_signal_rx_raw","mesh_rx_rcpi_raw"]){
+        const raw=readValue(field);
+        if(raw===null||raw>=0||raw< -120)continue;
+        percent=Math.round(Math.max(0,Math.min(100,2*(100+raw))));
+        break;
+      }
+    }
+    if(percent===null)return "";
+    const bars=Math.ceil(percent/25);
+    const color=percent>=70?"#2cc89a":percent>=40?"#f2b84b":"#ed795c";
+    return '<svg class="fnc-signal" aria-hidden="true" width="32" height="22" viewBox="0 0 48 32">'+[9,16,23,30].map((h,i)=>'<rect x="'+(i*12)+'" y="'+(32-h)+'" width="9" height="'+h+'" rx="2" fill="'+(i<bars?color:"#29404d")+'"/>').join("")+'</svg>';
   }
   _online(n){
     if(typeof n.online==="boolean")return n.online;
@@ -151,7 +178,7 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     const online=nodes.filter(n=>this._online(n)===true).length;
     const offline=nodes.filter(n=>this._online(n)===false).length;
     const connectionCount=nodes.filter(n=>this._kind(n)!=="router"&&(this._connection(n)||this._hass?.states?.["sensor.fritzbox_network_insight_"+String(n.mac||"").replace(/:/g,"").toLowerCase()+"_wlan_connection_peer"]?.state&&!["unknown","unavailable"].includes(String(this._hass.states["sensor.fritzbox_network_insight_"+String(n.mac||"").replace(/:/g,"").toLowerCase()+"_wlan_connection_peer"]?.state).toLowerCase()))).length;
-    const item=n=>'<button class="fnc-device" data-device="'+esc(this._id(n))+'"><span class="fnc-dot '+(this._online(n)===true?"on":"")+'"></span><span class="fnc-device-text"><strong>'+esc(n.name||n.mac)+'</strong><small>'+esc(this._kind(n)==="device"?"Endgerät":this._kind(n))+' · '+esc(n.ip_address||"")+'</small></span></button>';
+    const item=n=>'<button class="fnc-device" data-device="'+esc(this._id(n))+'"><span class="fnc-dot '+(this._online(n)===true?"on":"")+'"></span><span class="fnc-device-text"><strong>'+esc(n.name||n.mac)+'</strong><small>'+esc(this._kind(n)==="device"?"Endgerät":this._kind(n))+' · '+esc(n.ip_address||"")+'</small></span>'+this._signalIcon(n)+'</button>';
     const tiles=components.filter(c=>filter(c)||this._filter==="device").map(c=>{
       const devices=(groups.get(this._id(c))||[]).filter(n=>this._online(n)!==false);
       const visible=devices.filter(n=>shown(n)&&this._online(n)!==false);
@@ -207,7 +234,7 @@ class FritzNetworkInsightMapCard extends HTMLElement {
       '<h3 class="fnc-groups-heading">'+(search?"":"NETZWERKKOMPONENTEN UND DIREKT VERBUNDENE GERÄTE")+'</h3><div class="fnc-groups">'+resultTiles+'</div><h3 class="fnc-other-heading">'+(search?"SUCHERGEBNIS":"OFFLINE-GERÄTE")+'</h3><div class="fnc-other">'+resultOther+'</div>')+
       '<footer>Datenquelle: sensor.netzwerk_topologie · Beziehungen werden ausschließlich aus den Sensorattributen übernommen.</footer>')+
       '</div></ha-card><style>'+
-      ':host{display:block;width:100%;min-width:0}.fnc-card{background:#161a20;color:#e7eaf0;border-radius:30px;overflow:hidden}.fnc-wrap{padding:14px;box-sizing:border-box;font-family:inherit}.fnc-wrap h2{font-size:22px;font-weight:500;margin:0 0 32px}.fnc-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.fnc-stat{border:1px solid #344052;border-radius:10px;padding:12px;min-height:75px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center}.fnc-stat strong{font-size:26px;color:#03a9f4;line-height:1.1}.fnc-stat small{font-size:12px;color:#b8c8e0}.fnc-meta{display:flex;gap:12px;margin-top:12px;font-size:12px;color:#a8bde0}.fnc-actions{display:flex;justify-content:flex-end;margin:12px 0 10px}.fnc-map-toggle{background:#03a9f4;color:#071522;border:0;border-radius:9px;padding:12px 18px;cursor:pointer;font-weight:600}.fnc-controls{display:flex;gap:8px;margin:8px 0 16px}.fnc-search,.fnc-filter{background:#222c3a;border:1px solid #354357;border-radius:9px;color:#e7eaf0;padding:12px;font:inherit;box-sizing:border-box}.fnc-search{flex:1;min-width:0}.fnc-filter{width:135px}.fnc-wrap h3{font-size:12px;margin:16px 0 10px;font-weight:700}.fnc-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:8px}.fnc-group{min-width:0}.fnc-group-head{width:100%;min-height:72px;display:flex;align-items:center;justify-content:space-between;text-align:left;gap:10px;border:1px solid #344052;background:#222c3a;color:#e7eaf0;border-radius:10px;padding:12px;cursor:pointer}.fnc-group-head strong,.fnc-device strong{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fnc-group-head small,.fnc-device small{display:block;font-size:11px;color:#a6bce1;margin-top:5px}.fnc-group-head b{color:#03a9f4}.fnc-group-items{display:grid;gap:5px;padding-top:6px}.fnc-other,.fnc-unassigned{display:flex;flex-wrap:wrap;gap:8px}.fnc-device{display:flex;align-items:center;gap:8px;min-width:190px;max-width:100%;border:1px solid #344052;border-radius:9px;background:#222c3a;color:#e7eaf0;text-align:left;padding:10px;cursor:pointer}.fnc-group-items .fnc-device{width:100%;min-width:0}.fnc-device-text{min-width:0}.fnc-dot{width:8px;height:8px;flex:none;background:#697383;border-radius:50%}.fnc-dot.on{background:#31cb8b}.fnc-wrap footer{font-size:11px;color:#a6bce1;margin-top:14px}.fnc-error{color:#ff9999}.fnc-info{padding:24px;border:1px solid #344052;border-radius:10px}@media(max-width:850px){.fnc-groups{grid-template-columns:repeat(2,minmax(0,1fr))}.fnc-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:520px){.fnc-groups{grid-template-columns:1fr}.fnc-controls{flex-wrap:wrap}.fnc-filter{width:100%}}'+
+      ':host{display:block;width:100%;min-width:0}.fnc-card{background:#161a20;color:#e7eaf0;border-radius:30px;overflow:hidden}.fnc-wrap{padding:14px;box-sizing:border-box;font-family:inherit}.fnc-wrap h2{font-size:22px;font-weight:500;margin:0 0 32px}.fnc-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.fnc-stat{border:1px solid #344052;border-radius:10px;padding:12px;min-height:75px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center}.fnc-stat strong{font-size:26px;color:#03a9f4;line-height:1.1}.fnc-stat small{font-size:12px;color:#b8c8e0}.fnc-meta{display:flex;gap:12px;margin-top:12px;font-size:12px;color:#a8bde0}.fnc-actions{display:flex;justify-content:flex-end;margin:12px 0 10px}.fnc-map-toggle{background:#03a9f4;color:#071522;border:0;border-radius:9px;padding:12px 18px;cursor:pointer;font-weight:600}.fnc-controls{display:flex;gap:8px;margin:8px 0 16px}.fnc-search,.fnc-filter{background:#222c3a;border:1px solid #354357;border-radius:9px;color:#e7eaf0;padding:12px;font:inherit;box-sizing:border-box}.fnc-search{flex:1;min-width:0}.fnc-filter{width:135px}.fnc-wrap h3{font-size:12px;margin:16px 0 10px;font-weight:700}.fnc-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,var(--fnc-group-min-width,100%)),1fr));gap:8px}.fnc-group{min-width:0;align-self:start}.fnc-group-items{min-width:0;grid-template-columns:minmax(0,1fr)}.fnc-group-head{width:100%;min-height:72px;display:flex;align-items:center;justify-content:space-between;text-align:left;gap:4px;border:1px solid #344052;background:#222c3a;color:#e7eaf0;border-radius:10px;padding:12px;cursor:pointer}.fnc-group-head strong,.fnc-device strong{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fnc-group-head small,.fnc-device small{display:block;font-size:11px;color:#a6bce1;margin-top:5px}.fnc-group-head>span{min-width:0}.fnc-group-head b{color:#03a9f4;flex:none}.fnc-group-items{display:grid;gap:5px;padding-top:6px}.fnc-other,.fnc-unassigned{display:flex;flex-wrap:wrap;gap:8px}.fnc-device{display:flex;align-items:center;gap:8px;min-width:190px;max-width:100%;border:1px solid #344052;border-radius:9px;background:#222c3a;color:#e7eaf0;text-align:left;padding:10px;cursor:pointer}.fnc-group-items .fnc-device{width:100%;min-width:0}.fnc-device-text{min-width:0}.fnc-signal{flex:none;margin-left:auto;display:block}.fnc-dot{width:8px;height:8px;flex:none;background:#697383;border-radius:50%}.fnc-dot.on{background:#31cb8b}.fnc-wrap footer{font-size:11px;color:#a6bce1;margin-top:14px}.fnc-error{color:#ff9999}.fnc-info{padding:24px;border:1px solid #344052;border-radius:10px}@media(max-width:850px){.fnc-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:520px){.fnc-controls{flex-wrap:wrap}.fnc-filter{width:100%}}'+
       '.fnc-exact-result{display:flex;flex-direction:column;gap:10px;min-width:300px;max-width:400px;width:100%;background:#222c3a;color:#f1f5f9;border:1px solid #394454;border-radius:10px;padding:12px;text-align:left;cursor:pointer;font:inherit}.fnc-exact-main{display:flex;align-items:center;gap:12px;min-width:0}.fnc-exact-text{min-width:0}.fnc-exact-text strong{display:block;font-size:14px;overflow-wrap:anywhere}.fnc-exact-text small{display:block;font-size:12px;color:#a6bce1;margin-top:4px}.fnc-exact-owner{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-top:1px solid #394454;padding-top:10px;font-size:12px;color:#a6bce1}.fnc-exact-owner strong{color:#f1f5f9;font-weight:600}'+
       '</style>';
 
@@ -222,8 +249,27 @@ class FritzNetworkInsightMapCard extends HTMLElement {
     this.querySelector(".fnc-map-toggle")?.addEventListener("click",()=>{this._showMap=!this._showMap;this.render();});
     this._bindResultClicks(nodes);
   }
+  _measureGroupWidths(){
+    const grid=this.querySelector(".fnc-groups");
+    if(!grid)return;
+    if(this._groupMinWidth)grid.style.setProperty("--fnc-group-min-width",this._groupMinWidth);
+    let widest=0;
+    for(const button of grid.querySelectorAll(".fnc-group-head")){
+      const probe=button.cloneNode(true);
+      try{
+        Object.assign(probe.style,{position:"absolute",visibility:"hidden",width:"max-content",maxWidth:"none",minWidth:"0",boxSizing:"border-box",left:"0",right:"auto",top:"0",bottom:"auto"});
+        grid.appendChild(probe);
+        widest=Math.max(widest,probe.getBoundingClientRect().width);
+      }finally{probe.remove();}
+    }
+    if(widest>0){
+      this._groupMinWidth=Math.ceil(widest)+"px";
+      grid.style.setProperty("--fnc-group-min-width",this._groupMinWidth);
+    }
+  }
   _bindResultClicks(nodes){
-    this.querySelectorAll("[data-group]").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.group;if(this._expanded.has(id))this._expanded.delete(id);else this._expanded.add(id);this.render();}));
+    this._measureGroupWidths();
+    this.querySelectorAll("[data-group]").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.group;if(this._expanded.has(id))this._expanded.delete(id);else this._expanded.add(id);this.render();requestAnimationFrame(()=>this._measureGroupWidths());}));
     this.querySelectorAll("[data-component]").forEach(b=>b.addEventListener("click",()=>{this._selectedComponent=b.dataset.component;this.render();}));
     this.querySelectorAll("[data-map-back]").forEach(b=>b.addEventListener("click",()=>{this._selectedComponent=null;this.render();}));
     this.querySelectorAll("[data-device]").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.device;const n=nodes.find(x=>this._id(x)===id);if(n){const event=new CustomEvent("hass-more-info",{bubbles:true,composed:true,detail:{entityId:"sensor.fritzbox_network_insight_"+String(n.mac||"").replace(/:/g,"").toLowerCase()+"_status"}});this.dispatchEvent(event);}}));
