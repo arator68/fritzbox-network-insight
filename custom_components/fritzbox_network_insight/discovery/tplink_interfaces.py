@@ -65,9 +65,13 @@ async def async_discover(hass):
 def enrich_host(host, identity, existing_identification=None):
     """Add identity metadata only when no stronger identification exists."""
     if (identity is None or existing_identification is not None
-            or host.get("detected_device_type") or host.get("mesh_role")
+            or host.get("detected_device_type")
+            or str(host.get("mesh_role") or "").strip().lower() in {"master", "slave"}
             or str(host.get("mac", "")).upper() != identity.mac.upper()):
+        if identity is not None:
+            _LOGGER.debug("Easy Smart enrichment skipped for %s: mesh_role=%r detected_type=%r existing_identification=%s", host.get("mac"), host.get("mesh_role"), host.get("detected_device_type"), existing_identification is not None)
         return
+    _LOGGER.debug("Easy Smart enrichment applied for %s", host.get("mac"))
     host.update({
         "detected_device_type": "switch",
         "detected_device_type_source": "tplink_easy_smart_discovery",
