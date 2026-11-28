@@ -225,8 +225,9 @@ class FritzNetworkInsightMapCard extends HTMLElement {
   _measureGroupWidths(){
     const grid=this.querySelector(".fnc-groups");
     if(!grid)return;
+    if(this._groupMinWidth)grid.style.setProperty("--fnc-group-min-width",this._groupMinWidth);
     let widest=0;
-    for(const button of grid.querySelectorAll(".fnc-group > .fnc-group-head")){
+    for(const button of grid.querySelectorAll(".fnc-group-head")){
       const probe=button.cloneNode(true);
       try{
         Object.assign(probe.style,{position:"absolute",visibility:"hidden",width:"max-content",maxWidth:"none",minWidth:"0",boxSizing:"border-box",left:"0",right:"auto",top:"0",bottom:"auto"});
@@ -234,12 +235,14 @@ class FritzNetworkInsightMapCard extends HTMLElement {
         widest=Math.max(widest,probe.getBoundingClientRect().width);
       }finally{probe.remove();}
     }
-    if(widest>0)grid.style.setProperty("--fnc-group-min-width",Math.ceil(widest)+"px");
-    else grid.style.removeProperty("--fnc-group-min-width");
+    if(widest>0){
+      this._groupMinWidth=Math.ceil(widest)+"px";
+      grid.style.setProperty("--fnc-group-min-width",this._groupMinWidth);
+    }
   }
   _bindResultClicks(nodes){
     this._measureGroupWidths();
-    this.querySelectorAll("[data-group]").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.group;if(this._expanded.has(id))this._expanded.delete(id);else this._expanded.add(id);this.render();}));
+    this.querySelectorAll("[data-group]").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.group;if(this._expanded.has(id))this._expanded.delete(id);else this._expanded.add(id);this.render();requestAnimationFrame(()=>this._measureGroupWidths());}));
     this.querySelectorAll("[data-component]").forEach(b=>b.addEventListener("click",()=>{this._selectedComponent=b.dataset.component;this.render();}));
     this.querySelectorAll("[data-map-back]").forEach(b=>b.addEventListener("click",()=>{this._selectedComponent=null;this.render();}));
     this.querySelectorAll("[data-device]").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.device;const n=nodes.find(x=>this._id(x)===id);if(n){const event=new CustomEvent("hass-more-info",{bubbles:true,composed:true,detail:{entityId:"sensor.fritzbox_network_insight_"+String(n.mac||"").replace(/:/g,"").toLowerCase()+"_status"}});this.dispatchEvent(event);}}));
