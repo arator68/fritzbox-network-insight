@@ -11,6 +11,9 @@ import struct
 import secrets
 import socket
 import time
+import logging
+
+_LOGGER = logging.getLogger(__name__)
 
 SEND_PORT = 29808
 RECEIVE_PORT = 29809
@@ -117,22 +120,30 @@ def discover_switches(local_ip: str, host_mac: bytes, timeout: float = 3.0) -> l
     sequence = secrets.randbelow(65536)
     request = build_request(host_mac, sequence)
     found: dict[str, DiscoveryIdentity] = {}
+    received = 0
+    _LOGGER.debug("Easy Smart scan: IP=%s MAC=%s sequence=%s", local_ip, host_mac.hex(':'), sequence)
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:
         sender.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sender.bind((local_ip, RECEIVE_PORT))
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver:
             receiver.bind(("255.255.255.255", RECEIVE_PORT))
             sender.sendto(request, ("255.255.255.255", SEND_PORT))
+            _LOGGER.debug("Easy Smart request sent to UDP %s", SEND_PORT)
             deadline = time.monotonic() + timeout
             while (remaining := deadline - time.monotonic()) > 0:
                 receiver.settimeout(remaining)
                 try:
-                    packet, _ = receiver.recvfrom(65535)
+                    packet, peer = receiver.recvfrom(65535)
+                    received += 1
+                    _LOGGER.debug("Easy Smart reply from %s: %d bytes", peer, len(packet))
                 except socket.timeout:
                     break
                 try:
                     identity = parse_response(packet, host_mac, sequence)
-                except ValueError:
+                except ValueError as err:
+                    _LOGGER.debug("Easy Smart reply rejected: %s", err)
                     continue
                 found[identity.mac] = identity
+                _LOGGER.debug("Easy Smart identified %s (%s)", identity.mac, identity.model)
+    _LOGGER.debug("Easy Smart scan complete: %d replies, %d switches", received, len(found))
     return list(found.values())
