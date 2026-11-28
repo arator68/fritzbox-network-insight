@@ -3,16 +3,27 @@ from __future__ import annotations
 
 from ipaddress import IPv4Address
 from typing import Any
+from pathlib import Path
 
 
-def select_interfaces(adapters: list[dict[str, Any]]) -> list[tuple[str, bytes]]:
+def read_interface_mac(name: str) -> str | None:
+    """Read the actual Linux interface address without guessing."""
+    if not name or name in ('.', '..') or '/' in name:
+        return None
+    try:
+        return (Path('/sys/class/net') / name / 'address').read_text().strip()
+    except OSError:
+        return None
+
+
+def select_interfaces(adapters: list[dict[str, Any]], mac_lookup=read_interface_mac) -> list[tuple[str, bytes]]:
     """Return unique enabled IPv4 addresses with valid unicast MACs."""
     result = {}
     for adapter in adapters:
         if not adapter.get("enabled"):
             continue
         try:
-            mac = bytes.fromhex(str(adapter.get("mac") or "").replace(":", "").replace("-", ""))
+            mac = bytes.fromhex(str(mac_lookup(adapter.get("name") or "") or "").replace(":", "").replace("-", ""))
         except ValueError:
             continue
         if len(mac) != 6 or not any(mac) or mac[0] & 1:
@@ -35,7 +46,8 @@ async def async_discover(hass):
 
     adapters = await network.async_get_adapters(hass)
     found = {}
-    for ip, mac in select_interfaces(adapters):
+    interfaces = await hass.async_add_executor_job(select_interfaces, adapters)
+    for ip, mac in interfaces:
         identities = await hass.async_add_executor_job(discover_switches, ip, mac)
         for identity in identities:
             found[identity.mac] = identity
