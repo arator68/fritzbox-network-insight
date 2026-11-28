@@ -3,6 +3,8 @@ import importlib.util
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import MagicMock, patch
+import socket
 
 PATH = Path(__file__).resolve().parents[1] / "custom_components/fritzbox_network_insight/discovery/tplink_discovery.py"
 spec = importlib.util.spec_from_file_location("tplink_discovery_test_module", PATH)
@@ -53,3 +55,27 @@ class TestEasySmartDiscovery(unittest.TestCase):
                             bytes.fromhex("00030006ec750cc268f8"))
         with self.assertRaises(ValueError):
             codec.parse_response(codec.transform(raw), HOST, SEQ)
+
+
+    def test_broadcast_transport(self):
+        sender, receiver = MagicMock(), MagicMock()
+        sender.__enter__.return_value = sender
+        receiver.__enter__.return_value = receiver
+        receiver.recvfrom.side_effect = [
+            (b"invalid", ("192.0.2.1", 29808)),
+            (codec.transform(REPLY), ("192.168.178.49", 29808)),
+            (codec.transform(REPLY), ("192.168.178.49", 29808)),
+            socket.timeout(),
+        ]
+        with patch.object(codec.socket, "socket", side_effect=[sender, receiver]), patch.object(codec.secrets, "randbelow", return_value=SEQ):
+            result = codec.discover_switches("192.168.178.2", HOST)
+        sender.bind.assert_called_once_with(("192.168.178.2", 29809))
+        receiver.bind.assert_called_once_with(("255.255.255.255", 29809))
+        sender.sendto.assert_called_once_with(codec.build_request(HOST, SEQ), ("255.255.255.255", 29808))
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].model, "TL-SG1024DE")
+
+    def test_socket_failure_is_not_empty_success(self):
+        with patch.object(codec.socket, "socket", side_effect=OSError("bind failed")):
+            with self.assertRaises(OSError):
+                codec.discover_switches("192.168.178.2", HOST)
