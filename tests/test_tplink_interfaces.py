@@ -28,3 +28,35 @@ class TestInterfaces(unittest.TestCase):
         adapters = [{"enabled": True, "mac": "02:11:22:33:44:55",
                      "ipv4": [{"address": ip}]} for ip in ("192.0.2.10", "198.51.100.10")]
         self.assertEqual(len(module.select_interfaces(adapters)), 2)
+
+
+class TestEnrichment(unittest.TestCase):
+    def setUp(self):
+        from types import SimpleNamespace
+        self.identity = SimpleNamespace(mac="02:11:22:33:44:55", model="TL-SG1024DE")
+
+    def test_identity_only(self):
+        host = {"mac": self.identity.mac.upper(), "connected_to": "router", "ip_address": "192.0.2.10"}
+        before = host.copy()
+        module.enrich_host(host, self.identity)
+        self.assertEqual(host["detected_device_type"], "switch")
+        self.assertEqual(host["device_model"], "TL-SG1024DE")
+        self.assertEqual(host["detected_device_type_source"], "tplink_easy_smart_discovery")
+        self.assertEqual({k: host[k] for k in before}, before)
+        self.assertEqual(set(host) - set(before), {"detected_device_type", "detected_device_type_source", "device_manufacturer", "device_model"})
+
+    def test_existing_evidence_preserved(self):
+        for extra, identification in [({"mesh_role": "slave"}, None),
+                                      ({"detected_device_type": "nas"}, None),
+                                      ({}, {"device_type": "switch"})]:
+            host = {"mac": self.identity.mac, **extra}
+            before = host.copy()
+            module.enrich_host(host, self.identity, identification)
+            self.assertEqual(host, before)
+
+    def test_mac_mismatch_and_missing_identity(self):
+        host = {"mac": "02:11:22:33:44:56"}
+        before = host.copy()
+        for identity in (self.identity, None):
+            module.enrich_host(host, identity)
+            self.assertEqual(host, before)
