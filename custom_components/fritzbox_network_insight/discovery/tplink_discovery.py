@@ -8,6 +8,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from ipaddress import IPv4Address
 import struct
+import secrets
+import socket
+import time
 
 SEND_PORT = 29808
 RECEIVE_PORT = 29809
@@ -100,3 +103,36 @@ def parse_response(packet: bytes, host_mac: bytes, sequence: int) -> DiscoveryId
         raise ValueError("Missing model")
     ip = str(IPv4Address(fields[4])) if 4 in fields else None
     return DiscoveryIdentity(mac.hex(":"), model, ip, string(8), string(7))
+
+
+def discover_switches(local_ip: str, host_mac: bytes, timeout: float = 3.0) -> list[DiscoveryIdentity]:
+    """Discover compatible switches on one IPv4 interface.
+
+    Blocking operation; callers must use an executor outside the HA event loop.
+    Socket errors propagate so a failed scan is distinguishable from no replies.
+    """
+    IPv4Address(local_ip)
+    if not 0 < timeout <= 30:
+        raise ValueError("Invalid discovery timeout")
+    sequence = secrets.randbelow(65536)
+    request = build_request(host_mac, sequence)
+    found: dict[str, DiscoveryIdentity] = {}
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:
+        sender.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sender.bind((local_ip, RECEIVE_PORT))
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver:
+            receiver.bind(("255.255.255.255", RECEIVE_PORT))
+            sender.sendto(request, ("255.255.255.255", SEND_PORT))
+            deadline = time.monotonic() + timeout
+            while (remaining := deadline - time.monotonic()) > 0:
+                receiver.settimeout(remaining)
+                try:
+                    packet, _ = receiver.recvfrom(65535)
+                except socket.timeout:
+                    break
+                try:
+                    identity = parse_response(packet, host_mac, sequence)
+                except ValueError:
+                    continue
+                found[identity.mac] = identity
+    return list(found.values())
