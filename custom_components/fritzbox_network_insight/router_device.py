@@ -38,6 +38,9 @@ def router_identity(coordinator, entry, mac):
     firmware = getattr(coordinator.client, "router_metrics", {}).get("fritz_os")
     if firmware:
         result["sw_version"] = firmware
+    hardware = getattr(coordinator.client, "router_metrics", {}).get("hardware_version")
+    if hardware:
+        result["hw_version"] = hardware
     return result
 
 
