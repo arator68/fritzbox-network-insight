@@ -11,23 +11,23 @@ spec.loader.exec_module(module)
 
 class TestInterfaces(unittest.TestCase):
     def test_enabled_unique_ipv4(self):
-        adapter = {"enabled": True, "mac": "02:11:22:33:44:55",
+        adapter = {"enabled": True, "name": "test0",
                    "ipv4": [{"address": "192.0.2.10"}, {"address": "192.0.2.10"},
                             {"address": "127.0.0.1"}, {"address": "169.254.1.1"},
                             {"address": "0.0.0.0"}, {"address": "invalid"}]}
-        self.assertEqual(module.select_interfaces([adapter]),
+        self.assertEqual(module.select_interfaces([adapter], lambda _: "02:11:22:33:44:55"),
                          [("192.0.2.10", bytes.fromhex("021122334455"))])
 
     def test_disabled_or_invalid_mac(self):
         for enabled, mac in [(False, "02:11:22:33:44:55"), (True, None),
                              (True, "ff:ff:ff:ff:ff:ff"), (True, "00:00:00:00:00:00")]:
-            self.assertEqual(module.select_interfaces([{"enabled": enabled, "mac": mac,
-                "ipv4": [{"address": "192.0.2.10"}]}]), [])
+            self.assertEqual(module.select_interfaces([{"enabled": enabled, "name": "test0",
+                "ipv4": [{"address": "192.0.2.10"}]}], lambda _: mac), [])
 
     def test_multiple_interfaces(self):
         adapters = [{"enabled": True, "mac": "02:11:22:33:44:55",
                      "ipv4": [{"address": ip}]} for ip in ("192.0.2.10", "198.51.100.10")]
-        self.assertEqual(len(module.select_interfaces(adapters)), 2)
+        self.assertEqual(len(module.select_interfaces(adapters, lambda _: "02:11:22:33:44:55")), 2)
 
 
 class TestEnrichment(unittest.TestCase):
