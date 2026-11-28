@@ -78,3 +78,7 @@ def enrich_host(host, identity, existing_identification=None):
         "device_manufacturer": "TP-Link",
         "device_model": identity.model,
     })
+    for key, value in (("device_hardware_version", identity.hardware),
+                       ("device_firmware_version", identity.firmware)):
+        if value:
+            host[key] = value
