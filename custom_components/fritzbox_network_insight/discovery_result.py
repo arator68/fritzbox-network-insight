@@ -51,6 +51,11 @@ class ManualDiscoveryResultSensor(
         record = self.coordinator.discovery_results.get(self._mac)
         if record is not None:
             return {**record, "discovery_mode": "manual"}
+        if self._mac is None:
+            metrics = getattr(self.coordinator.client, "router_metrics", {})
+            if metrics.get("fritz_os"):
+                return {"status": "responded", "discovery_mode": "automatic",
+                        "protocols": ["tr064"], "scope": "configured_router"}
         host = (self.coordinator.data or {}).get(self._mac, {})
         if host.get("device_type_source") == "tplink_easy_smart_discovery":
             return {"status": "responded", "discovery_mode": "automatic",
