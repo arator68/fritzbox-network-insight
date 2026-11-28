@@ -458,14 +458,17 @@ class FritzBoxHostStatusSensor(
             or str(host.get("name") or self._mac),
         )
         identification = self.coordinator.device_identifications.get(self._mac) or {}
-        manufacturer = identification.get("device_manufacturer")
+        manufacturer = identification.get("device_manufacturer") or host.get("device_manufacturer")
         if not manufacturer and host.get("mac_vendor_status") == "matched":
             manufacturer = host.get("mac_vendor")
-        model = identification.get("device_model")
+        model = identification.get("device_model") or host.get("device_model")
         if manufacturer:
             info["manufacturer"] = manufacturer
         if model:
             info["model"] = model
+        for key, field in (("hw_version", "device_hardware_version"), ("sw_version", "device_firmware_version")):
+            if host.get(field):
+                info[key] = host[field]
         return info
 
     @property
