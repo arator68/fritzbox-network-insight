@@ -1,4 +1,4 @@
-"""Diagnostic sensors for explicit manual discovery requests."""
+"""Diagnostic sensors for manual and automatic discovery results."""
 from __future__ import annotations
 
 from typing import Any
@@ -46,17 +46,28 @@ class ManualDiscoveryResultSensor(
                 connections={("mac", mac)},
             )
 
+    def _result(self):
+        """Prefer an explicit manual result; otherwise expose verified automatic identity."""
+        record = self.coordinator.discovery_results.get(self._mac)
+        if record is not None:
+            return {**record, "discovery_mode": "manual"}
+        host = (self.coordinator.data or {}).get(self._mac, {})
+        if host.get("device_type_source") == "tplink_easy_smart_discovery":
+            return {"status": "responded", "discovery_mode": "automatic",
+                    "protocols": ["tplink_easy_smart_discovery"]}
+        return None
+
     @property
     def native_value(self) -> str:
         """Return the most recent result, or not_started after restart."""
-        record = self.coordinator.discovery_results.get(self._mac)
+        record = self._result()
         status = record.get("status") if isinstance(record, dict) else None
         return status if status in self._attr_options else "not_started"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Expose only summary counts and time, never credentials."""
-        record = self.coordinator.discovery_results.get(self._mac)
+        record = self._result()
         if record is None:
             return {"last_run": None, "requested": 0, "checked": 0}
         return dict(record)
