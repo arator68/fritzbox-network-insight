@@ -18,6 +18,7 @@ from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
 from .device_classifier import classify_device
 from .discovery import DiscoveryManager
 from .discovery.snmp import SnmpDiscoveryAdapter
+from .discovery.tplink_interfaces import async_discover as async_discover_tplink
 from .mac_vendor import lookup_mac_vendor
 from .mesh import fetch_mesh, parse_mesh
 from .mesh_wlan_details import extract_mesh_wlan_details
@@ -93,6 +94,8 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self._repeater_diag_values: dict[str, int] = {}
         self._repeater_client_values: dict[str, dict[str, dict[str, int]]] = {}
         self._repeater_diag_observed_at: str | None = None
+        self._tplink_last_attempt: float | None = None
+        self._tplink_identities = {}
         self._snmp_last_attempt: float = 0.0
         self._snmp_scan_lock = asyncio.Lock()
         self._dns_cache: dict[str, tuple[float, str | None]] = {}
@@ -607,7 +610,23 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             )
         for mac, host in indexed.items():
             indexed[mac] = await self._discovery.async_enrich(host)
+        now_tplink = monotonic()
+        if self._tplink_last_attempt is None or now_tplink - self._tplink_last_attempt >= 900:
+            self._tplink_last_attempt = now_tplink
+            try:
+                identities = await async_discover_tplink(self.hass)
+                self._tplink_identities = {item.mac.upper(): item for item in identities}
+            except Exception:
+                _LOGGER.debug("Optional TP-Link discovery failed", exc_info=True)
         for mac, host in indexed.items():
+            identity = self._tplink_identities.get(mac.upper())
+            if identity and not host.get("detected_device_type") and not host.get("mesh_role") and mac not in self.device_identifications:
+                host.update({
+                    "detected_device_type": "switch",
+                    "detected_device_type_source": "tplink_easy_smart_discovery",
+                    "device_manufacturer": "TP-Link",
+                    "device_model": identity.model,
+                })
             identification = self.device_identifications.get(mac)
             if identification:
                 host.update(identification)
