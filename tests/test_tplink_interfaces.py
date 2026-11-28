@@ -33,7 +33,7 @@ class TestInterfaces(unittest.TestCase):
 class TestEnrichment(unittest.TestCase):
     def setUp(self):
         from types import SimpleNamespace
-        self.identity = SimpleNamespace(mac="02:11:22:33:44:55", model="TL-SG1024DE")
+        self.identity = SimpleNamespace(mac="02:11:22:33:44:55", model="TL-SG1024DE", hardware=None, firmware=None)
 
     def test_identity_only(self):
         host = {"mac": self.identity.mac.upper(), "connected_to": "router", "ip_address": "192.0.2.10"}
@@ -73,3 +73,11 @@ class TestEnrichment(unittest.TestCase):
         before = host.copy()
         module.enrich_host(host, self.identity)
         self.assertEqual(host, before)
+
+    def test_optional_versions(self):
+        self.identity.hardware = "TL-SG1024DE 7.0"
+        self.identity.firmware = "1.0.0"
+        host = {"mac": self.identity.mac}
+        module.enrich_host(host, self.identity)
+        self.assertEqual(host["device_hardware_version"], self.identity.hardware)
+        self.assertEqual(host["device_firmware_version"], self.identity.firmware)
