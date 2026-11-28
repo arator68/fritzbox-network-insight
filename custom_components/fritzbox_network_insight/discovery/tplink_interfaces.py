@@ -4,6 +4,9 @@ from __future__ import annotations
 from ipaddress import IPv4Address
 from typing import Any
 from pathlib import Path
+import logging
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def read_interface_mac(name: str) -> str | None:
@@ -47,8 +50,13 @@ async def async_discover(hass):
     adapters = await network.async_get_adapters(hass)
     found = {}
     interfaces = await hass.async_add_executor_job(select_interfaces, adapters)
+    _LOGGER.debug("Easy Smart adapters: %s; selected: %s", [(a.get('name'), a.get('enabled'), a.get('ipv4')) for a in adapters], [(ip, mac.hex(':')) for ip, mac in interfaces])
     for ip, mac in interfaces:
-        identities = await hass.async_add_executor_job(discover_switches, ip, mac)
+        try:
+            identities = await hass.async_add_executor_job(discover_switches, ip, mac)
+        except OSError:
+            _LOGGER.debug("Easy Smart socket failure on %s", ip, exc_info=True)
+            raise
         for identity in identities:
             found[identity.mac] = identity
     return list(found.values())
