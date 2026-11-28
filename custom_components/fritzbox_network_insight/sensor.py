@@ -509,6 +509,9 @@ class FritzBoxHostStatusSensor(
             "interface_type": host["interface_type"],
             "seen_in_latest_scan": True,
         }
+        for key in ("device_hardware_version", "device_firmware_version"):
+            if host.get(key):
+                attributes[key] = host[key]
         # Small repeater collection status; full raw responses stay in memory.
         repeater_ip = host.get("ip_address")
         repeater_configs = self.coordinator.entry.options.get("repeaters", {})
