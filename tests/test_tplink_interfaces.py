@@ -60,3 +60,16 @@ class TestEnrichment(unittest.TestCase):
         for identity in (self.identity, None):
             module.enrich_host(host, identity)
             self.assertEqual(host, before)
+
+    def test_ordinary_mesh_client_can_be_classified(self):
+        for role in ("client", "none", "unknown", None):
+            host = {"mac": self.identity.mac, "mesh_role": role}
+            module.enrich_host(host, self.identity)
+            self.assertEqual(host["detected_device_type"], "switch")
+            self.assertEqual(host["mesh_role"], role)
+
+    def test_mesh_master_preserved(self):
+        host = {"mac": self.identity.mac, "mesh_role": "master"}
+        before = host.copy()
+        module.enrich_host(host, self.identity)
+        self.assertEqual(host, before)
