@@ -233,7 +233,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
     def _update_identified_device_registry(
         self, mac: str, identification: dict[str, str]
     ) -> None:
-        """Update an existing HA device after verified SNMP identification."""
+        """Update an existing HA device after verified protocol identification."""
         registry = dr.async_get(self.hass)
         device = registry.async_get_device(identifiers={(DOMAIN, mac)})
         if device is None:
@@ -245,6 +245,10 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             changes["manufacturer"] = manufacturer
         if model and device.model != model:
             changes["model"] = model
+        for key, field in (("hw_version", "device_hardware_version"), ("sw_version", "device_firmware_version")):
+            value = identification.get(field)
+            if value and getattr(device, key) != value:
+                changes[key] = value
         if changes:
             registry.async_update_device(device.id, **changes)
 
@@ -622,6 +626,8 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             identity = self._tplink_identities.get(mac.upper())
             identification = self.device_identifications.get(mac)
             enrich_tplink_host(host, identity, identification)
+            if host.get("detected_device_type_source") == "tplink_easy_smart_discovery":
+                self._update_identified_device_registry(mac, host)
             if identification:
                 host.update(identification)
             host.update(classify_device(host))
