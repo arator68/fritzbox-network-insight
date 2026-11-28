@@ -14,7 +14,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .router_device import router_device_info, router_mac, router_display_name, prune_router_host_discovery, router_identity
-from .router_monitoring import FritzBoxRouterMetricSensor
+from .router_monitoring import FritzBoxRouterMetricSensor, FIELDS
 from .coordinator import FritzBoxDataUpdateCoordinator
 from .entity_id_migration import (
     migrate_legacy_status_entity_id,
@@ -52,7 +52,7 @@ async def async_setup_entry(
             return []
         result: list[SensorEntity] = []
         for metric in sorted(getattr(coordinator.client, "router_metrics", {})):
-            if metric not in registered_router_metrics:
+            if metric in FIELDS and metric not in registered_router_metrics:
                 registered_router_metrics.add(metric)
                 result.append(FritzBoxRouterMetricSensor(coordinator, entry, mac, metric))
         return result
