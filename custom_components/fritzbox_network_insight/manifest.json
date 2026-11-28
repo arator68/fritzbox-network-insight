@@ -6,7 +6,8 @@
   ],
   "config_flow": true,
   "dependencies": [
-    "http"
+    "http",
+    "network"
   ],
   "documentation": "https://github.com/arator68/fritzbox-network-insight",
   "integration_type": "hub",

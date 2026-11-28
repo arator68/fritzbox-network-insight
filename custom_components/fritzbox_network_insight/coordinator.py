@@ -18,6 +18,7 @@ from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
 from .device_classifier import classify_device
 from .discovery import DiscoveryManager
 from .discovery.snmp import SnmpDiscoveryAdapter
+from .discovery.tplink_interfaces import async_discover as async_discover_tplink, enrich_host as enrich_tplink_host
 from .mac_vendor import lookup_mac_vendor
 from .mesh import fetch_mesh, parse_mesh
 from .mesh_wlan_details import extract_mesh_wlan_details
@@ -93,6 +94,8 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         self._repeater_diag_values: dict[str, int] = {}
         self._repeater_client_values: dict[str, dict[str, dict[str, int]]] = {}
         self._repeater_diag_observed_at: str | None = None
+        self._tplink_last_attempt: float | None = None
+        self._tplink_identities = {}
         self._snmp_last_attempt: float = 0.0
         self._snmp_scan_lock = asyncio.Lock()
         self._dns_cache: dict[str, tuple[float, str | None]] = {}
@@ -230,7 +233,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
     def _update_identified_device_registry(
         self, mac: str, identification: dict[str, str]
     ) -> None:
-        """Update an existing HA device after verified SNMP identification."""
+        """Update an existing HA device after verified protocol identification."""
         registry = dr.async_get(self.hass)
         device = registry.async_get_device(identifiers={(DOMAIN, mac)})
         if device is None:
@@ -242,14 +245,20 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             changes["manufacturer"] = manufacturer
         if model and device.model != model:
             changes["model"] = model
+        for key, field in (("hw_version", "device_hardware_version"), ("sw_version", "device_firmware_version")):
+            value = identification.get(field)
+            if value and getattr(device, key) != value:
+                changes[key] = value
         if changes:
             registry.async_update_device(device.id, **changes)
 
     async def async_record_manual_discovery(
         self, mac: str | None, *, status: str, requested: int, checked: int,
-        protocols: tuple[str, ...] = (), details: dict[str, str] | None = None
+        protocols: tuple[str, ...] = (), details: dict[str, str] | None = None,
+        publish: bool = True, scan_hosts: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         """Publish a manual result and update verified MAC-based identification."""
+        observation_hosts = scan_hosts if scan_hosts is not None else (self.data or {})
         result_details = dict(details or {})
         # Match only exact LLDP chassis MACs against known FRITZ!Box hosts.
         # This is an observation annotation, not an inferred network edge.
@@ -259,7 +268,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                 if isinstance(raw_neighbors, list) and all(
                     isinstance(item, dict) for item in raw_neighbors
                 ):
-                    matched = match_lldp_neighbors(raw_neighbors, self.data or {})
+                    matched = match_lldp_neighbors(raw_neighbors, observation_hosts)
                     result_details["lldp_neighbors"] = json.dumps(
                         matched, ensure_ascii=False
                     )
@@ -295,7 +304,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             try:
                 entries = json.loads(result_details["fdb_entries"])
                 if isinstance(entries, list) and all(isinstance(item, dict) for item in entries):
-                    observations = build_fdb_observations(mac, entries, self.data or {})
+                    observations = build_fdb_observations(mac, entries, observation_hosts)
                     self.fdb_observations[mac] = observations
                     fdb_changed = True
             except (ValueError, TypeError):
@@ -317,7 +326,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                 })
                 # Update the live host record so status sensors change immediately.
                 self._update_identified_device_registry(mac, identified)
-                if self.data and mac in self.data:
+                if publish and self.data and mac in self.data:
                     host = self.data[mac]
                     host.update(identified)
                     host.update(classify_device(host))
@@ -349,7 +358,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
         # A manual SNMP scan must publish the switch's own IF-MIB telemetry
         # immediately. Otherwise LLDP connection sensors see stale device details
         # until the next periodic host scan.
-        if self.device_details and mac is not None:
+        if publish and self.device_details and mac is not None:
             details = self.device_details.get(mac)
             if (
                 details is not None
@@ -374,7 +383,8 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             add_lan_port_details(
                 self.device_details, self.discovery_results, self.fdb_observations
             )
-        self.async_update_listeners()
+        if publish:
+            self.async_update_listeners()
         if fdb_changed:
             async with self._topology_save_lock:
                 try:
@@ -454,7 +464,7 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
                         continue
                     await self.async_record_manual_discovery(
                         mac, status="responded", requested=1, checked=1,
-                        protocols=("snmp",), details=details,
+                        protocols=("snmp",), details=details, publish=False, scan_hosts=hosts,
                     )
                 except Exception:
                     _LOGGER.warning("Automatic SNMP topology refresh failed for %s", mac)
@@ -607,8 +617,20 @@ class FritzBoxDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, An
             )
         for mac, host in indexed.items():
             indexed[mac] = await self._discovery.async_enrich(host)
+        now_tplink = monotonic()
+        if self._tplink_last_attempt is None or now_tplink - self._tplink_last_attempt >= 900:
+            self._tplink_last_attempt = now_tplink
+            try:
+                identities = await async_discover_tplink(self.hass)
+                self._tplink_identities = {item.mac.upper(): item for item in identities}
+            except Exception:
+                _LOGGER.debug("Optional TP-Link discovery failed", exc_info=True)
         for mac, host in indexed.items():
+            identity = self._tplink_identities.get(mac.upper())
             identification = self.device_identifications.get(mac)
+            enrich_tplink_host(host, identity, identification)
+            if host.get("detected_device_type_source") == "tplink_easy_smart_discovery":
+                self._update_identified_device_registry(mac, host)
             if identification:
                 host.update(identification)
             host.update(classify_device(host))

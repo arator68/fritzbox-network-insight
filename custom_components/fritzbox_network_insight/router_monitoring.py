@@ -63,6 +63,11 @@ def read_router_metrics(connection: Any) -> dict[str, Any]:
             parsed = _valid(response.get(field), kind)
             if parsed is not None:
                 result[key] = parsed
+    device_info = responses.get(("DeviceInfo", "GetInfo"))
+    if device_info is not None:
+        hardware = _valid(device_info.get("NewHardwareVersion"), "text")
+        if hardware is not None:
+            result["hardware_version"] = hardware
     # WAN PPP is an alternative, never a second source of duplicate sensors.
     if "external_ipv4" not in result or "uptime" not in result:
         for key, action, field, kind in (

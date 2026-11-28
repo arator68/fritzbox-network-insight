@@ -13,8 +13,8 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .router_device import router_device_info, router_mac, router_display_name, prune_router_host_discovery
-from .router_monitoring import FritzBoxRouterMetricSensor
+from .router_device import router_device_info, router_mac, router_display_name, prune_router_host_discovery, router_identity
+from .router_monitoring import FritzBoxRouterMetricSensor, FIELDS
 from .coordinator import FritzBoxDataUpdateCoordinator
 from .entity_id_migration import (
     migrate_legacy_status_entity_id,
@@ -52,7 +52,7 @@ async def async_setup_entry(
             return []
         result: list[SensorEntity] = []
         for metric in sorted(getattr(coordinator.client, "router_metrics", {})):
-            if metric not in registered_router_metrics:
+            if metric in FIELDS and metric not in registered_router_metrics:
                 registered_router_metrics.add(metric)
                 result.append(FritzBoxRouterMetricSensor(coordinator, entry, mac, metric))
         return result
@@ -61,7 +61,8 @@ async def async_setup_entry(
         result: list[SensorEntity] = []
         host = (coordinator.data or {}).get(mac)
         fields = (
-            ("role", "type") if _is_wlan(host) else CONNECTION_FIELDS
+            ("role",) if mac == router_mac(coordinator, entry)
+            else ("role", "type") if _is_wlan(host) else CONNECTION_FIELDS
         )
         for field in fields:
             identity = (mac, field)
@@ -96,6 +97,14 @@ async def async_setup_entry(
                 break
 
     _prune_wlan_lan_sensors()
+    if router is not None:
+        compact = router.replace(":", "").lower()
+        obsolete_router_ids = {f"host_{compact}_connection_{field}"
+                               for field in CONNECTION_FIELDS if field != "role"}
+        for registered in list(er.async_entries_for_config_entry(registry, entry.entry_id)):
+            if (registered.domain == "sensor" and registered.platform == DOMAIN
+                    and registered.unique_id in obsolete_router_ids):
+                registry.async_remove(registered.entity_id)
     # Retire the old WLAN-specific role entity. The stable connection_role
     # entity is now the only role sensor for both LAN and WLAN.
     for registered in list(er.async_entries_for_config_entry(registry, entry.entry_id)):
@@ -458,14 +467,18 @@ class FritzBoxHostStatusSensor(
             or str(host.get("name") or self._mac),
         )
         identification = self.coordinator.device_identifications.get(self._mac) or {}
-        manufacturer = identification.get("device_manufacturer")
+        manufacturer = identification.get("device_manufacturer") or host.get("device_manufacturer")
         if not manufacturer and host.get("mac_vendor_status") == "matched":
             manufacturer = host.get("mac_vendor")
-        model = identification.get("device_model")
+        model = identification.get("device_model") or host.get("device_model")
         if manufacturer:
             info["manufacturer"] = manufacturer
         if model:
             info["model"] = model
+        for key, field in (("hw_version", "device_hardware_version"), ("sw_version", "device_firmware_version")):
+            if host.get(field):
+                info[key] = host[field]
+        info.update(router_identity(self.coordinator, self.coordinator.entry, self._mac))
         return info
 
     @property
@@ -509,6 +522,9 @@ class FritzBoxHostStatusSensor(
             "interface_type": host["interface_type"],
             "seen_in_latest_scan": True,
         }
+        for key in ("device_hardware_version", "device_firmware_version"):
+            if host.get(key):
+                attributes[key] = host[key]
         # Small repeater collection status; full raw responses stay in memory.
         repeater_ip = host.get("ip_address")
         repeater_configs = self.coordinator.entry.options.get("repeaters", {})
