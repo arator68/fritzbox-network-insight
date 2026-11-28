@@ -13,7 +13,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .router_device import router_device_info, router_mac, router_display_name, prune_router_host_discovery
+from .router_device import router_device_info, router_mac, router_display_name, prune_router_host_discovery, router_identity
 from .router_monitoring import FritzBoxRouterMetricSensor
 from .coordinator import FritzBoxDataUpdateCoordinator
 from .entity_id_migration import (
@@ -469,6 +469,7 @@ class FritzBoxHostStatusSensor(
         for key, field in (("hw_version", "device_hardware_version"), ("sw_version", "device_firmware_version")):
             if host.get(field):
                 info[key] = host[field]
+        info.update(router_identity(self.coordinator, self.coordinator.entry, self._mac))
         return info
 
     @property
