@@ -6,6 +6,7 @@ on:
       - main
       - develop
       - "feature/**"
+      - "fix/**"
   pull_request:
   workflow_dispatch:
 
@@ -26,7 +27,8 @@ jobs:
         run: python -m compileall -q custom_components tests
 
       - name: Validate network map JavaScript syntax
-        run: node --check custom_components/fritzbox_network_insight/www/fritz-network-insight-map-card.js
+        run: |
+          find custom_components/fritzbox_network_insight/www -name "*.js" -type f -exec node --check {} \;
 
       - name: Run tests
         run: python -m unittest discover -s tests -v
